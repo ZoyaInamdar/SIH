@@ -4,270 +4,541 @@ from typing import Optional
 
 
 # ============================================================
-# ICE RISK LEVEL
+# FSICR REFERENCE CLASSES
 # ============================================================
 
-class IceRiskLevel(str, Enum):
-    SAFE = "safe"
-    CAUTION = "caution"
-    RESTRICTED = "restricted"
-    AVOID = "avoid"
+class FSICRClass(str, Enum):
+    """
+    Finnish-Swedish Ice Class Rules reference classes.
+
+    These are reference calculation classes.
+    They do NOT assign an FSICR class to MV Vasiliy Golovnin.
+    """
+
+    IA_SUPER = "IA Super"
+    IA = "IA"
+    IB = "IB"
+    IC = "IC"
 
 
 # ============================================================
-# ICE CONDITION
+# FSICR DESIGN PARAMETERS
+# ============================================================
+
+@dataclass(frozen=True)
+class FSICRDesignParameters:
+    """
+    Design parameters used by the FSICR channel-resistance model.
+
+    Hm:
+        thickness of the consolidated ice layer.
+
+    hi:
+        thickness of the level ice layer.
+
+    C5:
+        FSICR coefficient associated with the ice class.
+    """
+
+    ice_class: FSICRClass
+    Hm_m: float
+    hi_m: float
+    C5: float
+
+
+FSICR_PARAMETERS = {
+    FSICRClass.IA_SUPER: FSICRDesignParameters(
+        ice_class=FSICRClass.IA_SUPER,
+        Hm_m=1.0,
+        hi_m=0.1,
+        C5=825.6,
+    ),
+
+    FSICRClass.IA: FSICRDesignParameters(
+        ice_class=FSICRClass.IA,
+        Hm_m=1.0,
+        hi_m=0.0,
+        C5=825.6,
+    ),
+
+    FSICRClass.IB: FSICRDesignParameters(
+        ice_class=FSICRClass.IB,
+        Hm_m=0.8,
+        hi_m=0.0,
+        C5=660.5,
+    ),
+
+    FSICRClass.IC: FSICRDesignParameters(
+        ice_class=FSICRClass.IC,
+        Hm_m=0.6,
+        hi_m=0.0,
+        C5=495.4,
+    ),
+}
+
+
+# ============================================================
+# VESSEL GEOMETRY
 # ============================================================
 
 @dataclass
-class IceCondition:
+class VesselGeometry:
     """
-    Represents the current sea-ice environment.
+    Vessel geometry required by the simplified FSICR
+    channel-resistance calculation.
 
-    concentration is expressed as a fraction:
+    Units:
 
-        0.0 = 0% ice
-        1.0 = 100% ice
-
-    thickness is the estimated ice thickness in metres.
+        L        = metres
+        B        = metres
+        T        = metres
+        Awf      = square metres
+        alpha    = degrees
+        phi_2    = degrees
+        Lpar/L   = dimensionless
     """
 
-    concentration: float
-    thickness_m: Optional[float] = None
-    snow_cover_m: Optional[float] = None
+    length_m: float
+    beam_m: float
+    draft_m: float
+
+    waterline_bow_area_m2: float
+
+    alpha_deg: float = 30.0
+    phi_2_deg: float = 40.0
+
+    Lpar_over_L: float = 0.45
 
 
 # ============================================================
-# VESSEL ICE CAPABILITY
+# FSICR CONSTANTS
 # ============================================================
 
-@dataclass
-class VesselIceCapability:
-    """
-    Vessel-specific ice capability.
+C1 = 0.0
+C2 = 0.0
 
-    This is deliberately separate from FSICR classification.
-
-    For MV Vasiliy Golovnin, the values must ultimately come from
-    verified Russian Maritime Register / vessel documentation.
-
-    Do not interpret this class as assigning an FSICR ice class
-    to the vessel.
-    """
-
-    vessel_id: str
-
-    vessel_name: str
-
-    # Actual certified / verified ice classification.
-    russian_ice_class: Optional[str] = None
-
-    # Maximum operational ice thickness that has been verified
-    # for this particular vessel/operational condition.
-    maximum_operational_ice_thickness_m: Optional[float] = None
-
-    # Whether the vessel requires an icebreaker or convoy
-    # under particular conditions.
-    icebreaker_assistance_required: bool = False
-
-    source: Optional[str] = None
+C3 = 845.0
+C4 = 42.0
 
 
 # ============================================================
-# FSICR-STYLE ICE SEVERITY
+# BASIC VALIDATION
 # ============================================================
 
-def classify_ice_severity(
-    concentration: float,
-    thickness_m: Optional[float] = None,
-) -> str:
+def validate_vessel_geometry(
+    vessel: VesselGeometry,
+) -> None:
+
+    if vessel.length_m <= 0:
+        raise ValueError(
+            "Vessel length must be greater than zero."
+        )
+
+    if vessel.beam_m <= 0:
+        raise ValueError(
+            "Vessel beam must be greater than zero."
+        )
+
+    if vessel.draft_m <= 0:
+        raise ValueError(
+            "Vessel draft must be greater than zero."
+        )
+
+    if vessel.waterline_bow_area_m2 <= 0:
+        raise ValueError(
+            "Waterline bow area must be greater than zero."
+        )
+
+    if not 0 < vessel.Lpar_over_L <= 1:
+        raise ValueError(
+            "Lpar_over_L must be between 0 and 1."
+        )
+
+
+# ============================================================
+# FSICR PARAMETERS
+# ============================================================
+
+def get_fsicr_parameters(
+    ice_class: FSICRClass,
+) -> FSICRDesignParameters:
+
+    try:
+        return FSICR_PARAMETERS[ice_class]
+
+    except KeyError:
+        raise ValueError(
+            f"Unsupported FSICR class: {ice_class}"
+        )
+
+
+# ============================================================
+# BOW ICE HEIGHT
+# ============================================================
+
+def calculate_Hf(
+    Hm_m: float,
+    beam_m: float,
+) -> float:
     """
-    Classify the severity of sea-ice conditions.
+    Calculate the equivalent ice height Hf.
 
-    This is a simplified decision-support classification inspired
-    by established ice-navigation concepts.
+    FSICR simplified formulation:
 
-    It is NOT an official FSICR compliance calculation.
+        Hf = 0.26 + sqrt(Hm * B)
+
+    where:
+
+        Hm = consolidated ice layer thickness
+        B  = vessel beam
+    """
+
+    if Hm_m <= 0:
+        raise ValueError(
+            "Hm must be greater than zero."
+        )
+
+    if beam_m <= 0:
+        raise ValueError(
+            "Beam must be greater than zero."
+        )
+
+    return 0.26 + (Hm_m * beam_m) ** 0.5
+
+
+# ============================================================
+# BOW ANGLE COEFFICIENT
+# ============================================================
+
+def calculate_Cpsi(
+    psi_deg: float,
+) -> float:
+    """
+    Calculate C_psi.
+
+    C_psi = 0 when psi <= 45 degrees.
+
+    For larger angles:
+
+        C_psi = 0.047 * psi - 2.115
+    """
+
+    if psi_deg <= 45.0:
+        return 0.0
+
+    return 0.047 * psi_deg - 2.115
+
+
+# ============================================================
+# ICE FRICTION COEFFICIENT
+# ============================================================
+
+def calculate_Cmu(
+    psi_deg: float,
+    alpha_deg: float,
+    phi_deg: float,
+) -> float:
+    """
+    Calculate the FSICR friction-related coefficient.
+
+    The FSICR formulation requires C_mu to be no smaller
+    than 0.45.
+    """
+
+    import math
+
+    psi = math.radians(psi_deg)
+    alpha = math.radians(alpha_deg)
+    phi = math.radians(phi_deg)
+
+    Cmu = (
+        0.15 * math.cos(phi / 2.0)
+        + math.sin(psi)
+        * math.sin(alpha)
+    )
+
+    return max(
+        0.45,
+        Cmu,
+    )
+
+
+# ============================================================
+# PSI ANGLE
+# ============================================================
+
+def calculate_psi(
+    alpha_deg: float,
+    phi_2_deg: float,
+) -> float:
+    """
+    Calculate psi from the FSICR bow geometry.
+
+        psi = atan(
+            tan(phi_2) / sin(alpha)
+        )
+    """
+
+    import math
+
+    alpha = math.radians(alpha_deg)
+    phi_2 = math.radians(phi_2_deg)
+
+    if abs(math.sin(alpha)) < 1e-12:
+        raise ValueError(
+            "Invalid alpha angle."
+        )
+
+    psi = math.atan(
+        math.tan(phi_2)
+        / math.sin(alpha)
+    )
+
+    return math.degrees(psi)
+
+
+# ============================================================
+# RULE CHANNEL RESISTANCE
+# ============================================================
+
+def calculate_channel_resistance(
+    vessel: VesselGeometry,
+    ice_class: FSICRClass,
+) -> float:
+    """
+    Calculate simplified FSICR rule channel resistance.
 
     Returns:
 
-        open_water
-        light
-        moderate
-        heavy
-        very_heavy
+        Rch in Newtons.
+
+    The implementation follows the simplified FSICR
+    formulation used for rule-channel resistance.
+
+    IMPORTANT:
+    This is a reference engineering calculation.
+    It is not a certification or classification calculation.
     """
 
-    concentration = max(
-        0.0,
-        min(1.0, float(concentration))
+    validate_vessel_geometry(vessel)
+
+    params = get_fsicr_parameters(
+        ice_class
     )
 
-    # Open / very low concentration
-    if concentration < 0.15:
-        return "open_water"
+    L = vessel.length_m
+    B = vessel.beam_m
+    T = vessel.draft_m
 
-    # Light ice
-    if concentration < 0.30:
-        return "light"
+    Hm = params.Hm_m
+    hi = params.hi_m
 
-    # Moderate ice
-    if concentration < 0.60:
-        if thickness_m is not None and thickness_m >= 1.0:
-            return "heavy"
-
-        return "moderate"
-
-    # Heavy ice
-    if concentration < 0.80:
-        return "heavy"
-
-    # Very heavy concentration
-    return "very_heavy"
-
-
-# ============================================================
-# RISK LEVEL
-# ============================================================
-
-def determine_ice_risk(
-    concentration: float,
-    thickness_m: Optional[float] = None,
-) -> IceRiskLevel:
-    """
-    Convert sea-ice conditions into a navigation risk level.
-
-    This is a prototype decision-support classification.
-    """
-
-    severity = classify_ice_severity(
-        concentration=concentration,
-        thickness_m=thickness_m,
+    Hf = calculate_Hf(
+        Hm_m=Hm,
+        beam_m=B,
     )
 
-    if severity == "open_water":
-        return IceRiskLevel.SAFE
+    psi = calculate_psi(
+        alpha_deg=vessel.alpha_deg,
+        phi_2_deg=vessel.phi_2_deg,
+    )
 
-    if severity == "light":
-        return IceRiskLevel.CAUTION
+    Cpsi = calculate_Cpsi(
+        psi_deg=psi
+    )
 
-    if severity == "moderate":
-        return IceRiskLevel.CAUTION
+    Cmu = calculate_Cmu(
+        psi_deg=psi,
+        alpha_deg=vessel.alpha_deg,
+        phi_deg=vessel.phi_2_deg,
+    )
 
-    if severity == "heavy":
-        return IceRiskLevel.RESTRICTED
+    # FSICR simplified channel-resistance expression.
+    term_1 = C1 + C2
 
-    if severity == "very_heavy":
-        return IceRiskLevel.AVOID
+    term_2 = (
+        C3
+        * (Hf + hi) ** 2
+        * (
+            B
+            + Cpsi * Hf
+        )
+        * Cmu
+    )
 
-    return IceRiskLevel.RESTRICTED
+    term_3 = (
+        C4
+        * L
+        * Hf ** 2
+    )
+
+    geometry_ratio = (
+        (L * T)
+        / (B ** 2)
+    )
+
+    # FSICR caps this geometric term to the applicable range.
+    geometry_term = min(
+        20.0,
+        max(
+            5.0,
+            geometry_ratio ** 3,
+        ),
+    )
+
+    term_4 = (
+        params.C5
+        * geometry_term
+        * (B / 4.0)
+    )
+
+    resistance_N = (
+        term_1
+        + term_2
+        + term_3
+        + term_4
+    )
+
+    return resistance_N
 
 
 # ============================================================
-# VESSEL-SPECIFIC ASSESSMENT
+# PROPULSION POWER
 # ============================================================
 
-def assess_vessel_ice_capability(
-    vessel: VesselIceCapability,
-    ice: IceCondition,
+def calculate_required_propulsion_power_kw(
+    channel_resistance_N: float,
+    propeller_diameter_m: float,
+    propeller_count: int = 1,
+    propulsion_type: str = "fixed_pitch",
+) -> float:
+    """
+    Calculate FSICR reference propulsion power.
+
+    FSICR relationship:
+
+        Ps = Kp * Rch^(3/2) / Dp
+
+    where:
+
+        Ps  = required propulsion power
+        Rch = rule channel resistance
+        Dp  = propeller diameter
+
+    The published coefficients depend on propeller count
+    and propulsion type.
+    """
+
+    if channel_resistance_N <= 0:
+        raise ValueError(
+            "Channel resistance must be greater than zero."
+        )
+
+    if propeller_diameter_m <= 0:
+        raise ValueError(
+            "Propeller diameter must be greater than zero."
+        )
+
+    if propeller_count not in (1, 2, 3):
+        raise ValueError(
+            "Propeller count must be 1, 2, or 3."
+        )
+
+    propulsion_type = propulsion_type.lower()
+
+    KP = {
+        1: {
+            "fixed_pitch": 2.26,
+            "controllable_pitch": 2.03,
+        },
+        2: {
+            "fixed_pitch": 1.60,
+            "controllable_pitch": 1.44,
+        },
+        3: {
+            "fixed_pitch": 1.31,
+            "controllable_pitch": 1.18,
+        },
+    }
+
+    if propulsion_type not in KP[propeller_count]:
+        raise ValueError(
+            "Unsupported propulsion type."
+        )
+
+    Kp = KP[
+        propeller_count
+    ][propulsion_type]
+
+    # Rch is converted from N to kN.
+    Rch_kN = channel_resistance_N / 1000.0
+
+    power_kw = (
+        Kp
+        * (Rch_kN ** 1.5)
+        / propeller_diameter_m
+    )
+
+    return power_kw
+
+
+# ============================================================
+# COMPLETE FSICR ASSESSMENT
+# ============================================================
+
+def assess_fsicr_condition(
+    vessel: VesselGeometry,
+    reference_class: FSICRClass,
+    propeller_diameter_m: Optional[float] = None,
+    propeller_count: int = 1,
+    propulsion_type: str = "fixed_pitch",
 ) -> dict:
     """
-    Assess whether the current ice condition is compatible with
-    the known vessel capability.
+    Perform a deterministic FSICR reference calculation.
 
-    Important:
+    No machine-learning model is used.
 
-    If the vessel's verified maximum ice thickness is unknown,
-    the system does NOT assume that the vessel can safely operate
-    in that condition.
-
-    Instead, the result becomes 'unknown_capability'.
+    The result is NOT a certification of the vessel.
     """
 
-    environmental_risk = determine_ice_risk(
-        concentration=ice.concentration,
-        thickness_m=ice.thickness_m,
+    resistance_N = calculate_channel_resistance(
+        vessel=vessel,
+        ice_class=reference_class,
     )
 
     result = {
-        "vessel_id": vessel.vessel_id,
-        "vessel_name": vessel.vessel_name,
+        "framework": "FSICR",
+        "reference_class": reference_class.value,
 
-        "ice_concentration": round(
-            ice.concentration,
+        "channel_resistance_N": round(
+            resistance_N,
+            2,
+        ),
+
+        "channel_resistance_kN": round(
+            resistance_N / 1000.0,
             3,
         ),
 
-        "ice_thickness_m": ice.thickness_m,
+        "propulsion_power_required_kw": None,
 
-        "environmental_risk": environmental_risk.value,
-
-        "vessel_capability_status": "unknown_capability",
-
-        "navigation_advisory": (
-            "Vessel-specific ice capability is not verified "
-            "for this condition."
+        "certification_status": (
+            "reference_calculation_only"
         ),
     }
 
-    # --------------------------------------------------------
-    # No verified thickness capability
-    # --------------------------------------------------------
+    if propeller_diameter_m is not None:
 
-    if vessel.maximum_operational_ice_thickness_m is None:
-
-        # Open water is still environmentally low-risk, but
-        # vessel-specific ice capability remains unknown.
-        if environmental_risk == IceRiskLevel.SAFE:
-            result["vessel_capability_status"] = "not_required"
-
-            result["navigation_advisory"] = (
-                "Low ice concentration. No vessel-specific "
-                "ice-thickness limit is required for this "
-                "condition."
-            )
-
-        return result
-
-    # --------------------------------------------------------
-    # Thickness is unavailable
-    # --------------------------------------------------------
-
-    if ice.thickness_m is None:
-
-        result["navigation_advisory"] = (
-            "Ice concentration is available, but ice thickness "
-            "is unavailable. Do not assume compliance with the "
-            "vessel's thickness capability."
-        )
-
-        return result
-
-    # --------------------------------------------------------
-    # Compare actual ice thickness with vessel capability
-    # --------------------------------------------------------
-
-    if (
-        ice.thickness_m
-        <= vessel.maximum_operational_ice_thickness_m
-    ):
-
-        result["vessel_capability_status"] = "within_limit"
-
-        result["navigation_advisory"] = (
-            "Estimated ice thickness is within the verified "
-            "vessel operational limit. Continue monitoring "
-            "ice conditions."
-        )
-
-    else:
-
-        result["vessel_capability_status"] = "exceeds_limit"
-
-        result["navigation_advisory"] = (
-            "Estimated ice thickness exceeds the verified "
-            "vessel operational limit. Route should be "
-            "restricted or avoided unless authorized ice "
-            "support is available."
+        result[
+            "propulsion_power_required_kw"
+        ] = round(
+            calculate_required_propulsion_power_kw(
+                channel_resistance_N=resistance_N,
+                propeller_diameter_m=propeller_diameter_m,
+                propeller_count=propeller_count,
+                propulsion_type=propulsion_type,
+            ),
+            2,
         )
 
     return result
@@ -277,47 +548,26 @@ def assess_vessel_ice_capability(
 # MV VASILIY GOLOVNIN
 # ============================================================
 
-MV_VASILIY_GOLOVNIN_ICE_CAPABILITY = VesselIceCapability(
+MV_VASILIY_GOLOVNIN_FSICR = {
+    "vessel_id": "MV-VG-001",
+    "vessel_name": "MV Vasiliy Golovnin",
 
-    vessel_id="MV-VG-001",
+    # IMPORTANT:
+    # Do not insert an FSICR class here.
+    #
+    # Golovnin's actual Russian classification should be
+    # obtained from authoritative vessel documentation.
+    "actual_ice_class": None,
 
-    vessel_name="MV Vasiliy Golovnin",
-
-    # Populate only after verification from authoritative
-    # Russian vessel documentation.
-    russian_ice_class=None,
-
-    maximum_operational_ice_thickness_m=None,
-
-    icebreaker_assistance_required=False,
-
-    source=(
-        "Russian Maritime Register / vessel documentation "
-        "to be verified"
+    "classification_system": (
+        "Russian classification / certification"
     ),
-)
 
+    "fsicr_reference_framework": True,
 
-# ============================================================
-# CONVENIENCE FUNCTION
-# ============================================================
-
-def assess_golovnin_ice_condition(
-    concentration: float,
-    thickness_m: Optional[float] = None,
-    snow_cover_m: Optional[float] = None,
-) -> dict:
-    """
-    Assess the current ice environment for MV Vasiliy Golovnin.
-    """
-
-    ice = IceCondition(
-        concentration=concentration,
-        thickness_m=thickness_m,
-        snow_cover_m=snow_cover_m,
-    )
-
-    return assess_vessel_ice_capability(
-        vessel=MV_VASILIY_GOLOVNIN_ICE_CAPABILITY,
-        ice=ice,
-    )
+    "note": (
+        "FSICR is used as a deterministic engineering "
+        "reference framework. It does not assign an FSICR "
+        "class to MV Vasiliy Golovnin."
+    ),
+}
