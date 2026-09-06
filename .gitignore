@@ -1,0 +1,69 @@
+# Python
+
+**pycache**/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+
+venv/
+.venv/
+env/
+
+# Environment variables / secrets
+
+.env
+.env.*
+!.env.example
+
+# IDE
+
+.vscode/
+.idea/
+
+# OS
+
+.DS_Store
+Thumbs.db
+
+# Node
+
+node_modules/
+npm-debug.log*
+dist/
+build/
+
+# Large datasets
+
+*.nc
+*.nc4
+*.h5
+*.hdf5
+*.grib
+*.grib2
+*.tif
+*.tiff
+
+# Temporary files
+
+tmp/
+temp/
+*.log
+
+# Python cache
+
+.pytest_cache/
+
+# Local databases
+
+*.db
+*.sqlite
+*.sqlite3
+
+# Large model files
+
+*.pt
+*.pth
+*.onnx
+*.pkl
+*.joblib
