@@ -67,3 +67,39 @@ temp/
 *.onnx
 *.pkl
 *.joblib
+
+# ============================================================
+# Sonar / FLS dataset
+# ============================================================
+
+# Original Marine Debris FLS dataset
+data/sonar/data/raw/
+
+# Converted YOLO dataset
+data/sonar/yolo/
+
+# Temporary sonar test outputs
+data/sonar/outputs/yolo_test/
+
+# YOLO training artifacts
+data/sonar/outputs/yolo/*/args.yaml
+data/sonar/outputs/yolo/*/results.csv
+data/sonar/outputs/yolo/*/results.png
+data/sonar/outputs/yolo/*/confusion_matrix.png
+data/sonar/outputs/yolo/*/confusion_matrix_normalized.png
+data/sonar/outputs/yolo/*/BoxPR_curve.png
+data/sonar/outputs/yolo/*/BoxF1_curve.png
+data/sonar/outputs/yolo/*/BoxP_curve.png
+data/sonar/outputs/yolo/*/BoxR_curve.png
+data/sonar/outputs/yolo/*/labels.jpg
+data/sonar/outputs/yolo/*/labels_correlogram.jpg
+
+# Keep best.pt, but don't commit last.pt
+data/sonar/outputs/yolo/*/weights/last.pt
+
+# Dataset archives
+data/sonar/*.tar
+data/sonar/*.tar.gz
+data/sonar/*.tar.bz2
+data/sonar/*.tar.xz
+data/sonar/*dataset*.zip

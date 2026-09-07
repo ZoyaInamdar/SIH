@@ -2,6 +2,12 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import List, Optional, Tuple
+
 
 class ShipPosition(BaseModel):
     latitude: float = Field(ge=-90, le=90)
@@ -107,3 +113,114 @@ class ForecastObservation(BaseModel):
 class ForecastRequest(BaseModel):
     observations: List[ForecastObservation]
     horizon_hours: float = Field(default=24.0, ge=0)
+
+
+@dataclass
+class SonarTarget:
+    """
+    One detected sonar target.
+    """
+
+    bounding_box: Tuple[int, int, int, int]
+
+    detection_confidence: float
+
+    target_class: Optional[str] = None
+
+    def to_dict(self):
+        return {
+            "bounding_box": list(
+                self.bounding_box
+            ),
+
+            "detection_confidence": round(
+                self.detection_confidence,
+                4,
+            ),
+
+            "target_class": self.target_class,
+        }
+
+
+@dataclass
+class SonarObservation:
+    """
+    Structured observation generated from an FLS sonar image.
+    """
+
+    observation_id: str
+
+    source_type: str
+
+    targets: List[SonarTarget]
+
+    range_m: Optional[float]
+
+    bearing_deg: Optional[float]
+
+    observed_at: str
+
+    def to_dict(self):
+
+        return {
+            "observation_id":
+                self.observation_id,
+
+            "source_type":
+                self.source_type,
+
+            "sonar": {
+
+                "targets": [
+                    target.to_dict()
+                    for target in self.targets
+                ],
+
+                "range_m":
+                    self.range_m,
+
+                "bearing_deg":
+                    self.bearing_deg,
+            },
+
+            "observed_at":
+                self.observed_at,
+        }
+
+
+def create_observation(
+    detections,
+    observation_id: str,
+    range_m: Optional[float] = None,
+    bearing_deg: Optional[float] = None,
+) -> SonarObservation:
+
+    targets = [
+        SonarTarget(
+            bounding_box=detection.bbox,
+            detection_confidence=(
+                detection.detection_score
+            ),
+            target_class=(
+                detection.target_class
+            ),
+        )
+
+        for detection in detections
+    ]
+
+    return SonarObservation(
+        observation_id=observation_id,
+
+        source_type="SONAR",
+
+        targets=targets,
+
+        range_m=range_m,
+
+        bearing_deg=bearing_deg,
+
+        observed_at=datetime.now(
+            timezone.utc
+        ).isoformat(),
+    )
