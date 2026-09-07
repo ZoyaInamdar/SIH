@@ -18,7 +18,7 @@ def point_inside_hazard(latitude: float, longitude: float, hazards: List[dict]) 
     return False
 
 class AStarRouter:
-    def __init__(self, grid: List[List[dict]], hazards: Optional[List[dict]] = None):
+    def __init__(self, grid: List[List[dict]], hazards: Optional[List[dict]] = None, ignore_environmental_penalties: bool = False):
         if not grid or not grid[0]:
             raise ValueError("Grid cannot be empty.")
         width = len(grid[0])
@@ -29,6 +29,7 @@ class AStarRouter:
         self.rows = len(grid)
         self.cols = width
         self.hazards = hazards or []
+        self.ignore_environmental_penalties = ignore_environmental_penalties
 
     def valid_point(self, point: GridPoint) -> bool:
         row, col = point
@@ -59,11 +60,14 @@ class AStarRouter:
             current_cell["latitude"], current_cell["longitude"],
             next_cell["latitude"], next_cell["longitude"]
         )
+        if self.ignore_environmental_penalties:
+            return distance_km
         return movement_cost(
             distance_km=distance_km,
             sea_ice_concentration=next_cell.get("sea_ice", 0.0),
             wave_height_m=next_cell.get("wave_height", 0.0)
         )
+
 
     def find_route(self, start: GridPoint, goal: GridPoint) -> Optional[List[GridPoint]]:
         if not self.valid_point(start) or not self.valid_point(goal):

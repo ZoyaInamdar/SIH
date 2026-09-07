@@ -118,9 +118,29 @@ def initialize_database():
         )
     """)
 
+    try:
+        cursor.execute("ALTER TABLE routes ADD COLUMN points TEXT NOT NULL DEFAULT '[]'")
+    except sqlite3.OperationalError:
+        pass
+
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ais_vessels (
+            vessel_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL,
+            speed_knots REAL NOT NULL DEFAULT 0.0,
+            heading_degrees REAL NOT NULL DEFAULT 0.0,
+            is_ncpor_fleet INTEGER NOT NULL DEFAULT 0,
+            timestamp TEXT NOT NULL
+        )
+    """)
+
     connection.commit()
 
     connection.close()
+
 
 
 if __name__ == "__main__":

@@ -68,6 +68,9 @@ temp/
 *.pkl
 *.joblib
 
+# Keep the trained sonar model in the repository
+!data/sonar/outputs/yolo/sonar_yolo26n/weights/best.pt
+
 # ============================================================
 # Sonar / FLS dataset
 # ============================================================
@@ -103,3 +106,4 @@ data/sonar/*.tar.gz
 data/sonar/*.tar.bz2
 data/sonar/*.tar.xz
 data/sonar/*dataset*.zip
+

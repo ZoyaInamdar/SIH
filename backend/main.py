@@ -17,7 +17,8 @@ from fastapi.responses import Response
 from .database import get_connection, initialize_database
 from .schemas import (
     ShipPosition, Iceberg, SeaIceZone, Hazard, Route, 
-    RouteRequest, VesselProfileRequest, ForecastRequest
+    RouteRequest, VesselProfileRequest, ForecastRequest,
+    CrewHazardReportRequest, AISVessel, RouteComparisonResponse
 )
 from .routing.astar import AStarRouter
 from .routing.grid import create_ocean_grid
@@ -31,10 +32,12 @@ from .utils.freshness import get_freshness_status
 from .utils.confidence import get_confidence_status
 from .utils.daylight import calculate_daylight_status
 from .utils.responses import build_data_response
-from .services.nmea_service import nmea_service
+from .services.nmea_services import nmea_service
+from .sonar_api import router as sonar_router
 
 
 app = FastAPI(title="Antarctic Navigation Decision Support API", version="1.0.0")
+app.include_router(sonar_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -257,6 +260,36 @@ def get_hazards():
         result.append(data)
     return build_data_response(result)
 
+@app.post("/hazards/crew-report")
+def create_crew_hazard_report(request: CrewHazardReportRequest):
+    hazard_id = "CREW-HZ-" + uuid.uuid4().hex[:8].upper()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    
+    hazard_data = {
+        "id": hazard_id,
+        "hazard_type": "CREW_REPORTED_HAZARD",
+        "latitude": request.latitude,
+        "longitude": request.longitude,
+        "radius_m": 500.0,  # Prototype conservative safety buffer: 500 m
+        "risk_level": "caution",
+        "confidence": 0.5,
+        "source": "CREW_REPORT",
+        "status": "UNVALIDATED_OBSERVATION",
+        "description": request.description,
+        "timestamp": now_iso
+    }
+    
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "INSERT OR REPLACE INTO hazards (id, hazard_type, latitude, longitude, radius_m, risk_level, confidence, source, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (hazard_data["id"], hazard_data["hazard_type"], hazard_data["latitude"], hazard_data["longitude"], hazard_data["radius_m"], hazard_data["risk_level"], hazard_data["confidence"], hazard_data["source"], hazard_data["timestamp"])
+    )
+    connection.commit()
+    connection.close()
+    return {"status": "success", "hazard": hazard_data}
+
+
 # ---------------------------------------------------------
 # HELPER FUNCTIONS
 # ---------------------------------------------------------
@@ -333,42 +366,85 @@ def calculate_route(request: RouteRequest):
     start = find_nearest_grid_point(grid, request.start_latitude, request.start_longitude)
     goal = find_nearest_grid_point(grid, request.destination_latitude, request.destination_longitude)
 
-    router = AStarRouter(grid, hazards=hazard_rows)
-    path = router.find_route(start, goal)
+    # 1. Fuel-Efficient Route (A* with environmental ice & wave penalties)
+    router_fe = AStarRouter(grid, hazards=hazard_rows, ignore_environmental_penalties=False)
+    path_fe = router_fe.find_route(start, goal)
 
-    if path is None:
+    if path_fe is None:
         raise HTTPException(status_code=404, detail="No safe route could be found.")
 
-    route_points = [{"latitude": grid[r][c]["latitude"], "longitude": grid[r][c]["longitude"]} for r, c in path]
-    distance_km = calculate_route_distance(path, grid)
-    average_ice, average_wave = get_environmental_values(path, grid)
-    risk_level = calculate_route_risk(path, grid)
+    points_fe = [{"latitude": grid[r][c]["latitude"], "longitude": grid[r][c]["longitude"]} for r, c in path_fe]
+    dist_fe = calculate_route_distance(path_fe, grid)
+    ice_fe, wave_fe = get_environmental_values(path_fe, grid)
+    risk_fe = calculate_route_risk(path_fe, grid)
+    fuel_fe = estimate_fuel(dist_fe, vessel, ice_fe, wave_fe)
 
-    calculated_fuel = estimate_fuel(distance_km, vessel, average_ice, average_wave)
-
-    route = {
-        "route_id": "ASTAR-" + uuid.uuid4().hex[:8].upper(),
-        "points": route_points,
-        "distance_km": round(distance_km, 3),
-        "estimated_fuel_cost": round(calculated_fuel, 2) if calculated_fuel else None,
-        "risk_level": risk_level,
+    fe_route = {
+        "route_id": "FE-" + uuid.uuid4().hex[:8].upper(),
+        "points": points_fe,
+        "distance_km": round(dist_fe, 3),
+        "estimated_fuel_cost": round(fuel_fe, 2) if fuel_fe else None,
+        "risk_level": risk_fe,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "algorithm": "A*",
-        "average_ice_concentration": round(average_ice, 4),
-        "average_wave_height_m": round(average_wave, 3),
+        "algorithm": "A* (Fuel-Efficient)",
+        "average_ice_concentration": round(ice_fe, 4),
+        "average_wave_height_m": round(wave_fe, 3),
         "vessel_id": vessel.vessel_id
     }
 
+    # 2. Standard Route (Shortest path ignoring environmental ice penalties)
+    router_std = AStarRouter(grid, hazards=hazard_rows, ignore_environmental_penalties=True)
+    path_std = router_std.find_route(start, goal) or path_fe
+    points_std = [{"latitude": grid[r][c]["latitude"], "longitude": grid[r][c]["longitude"]} for r, c in path_std]
+    dist_std = calculate_route_distance(path_std, grid)
+    ice_std, wave_std = get_environmental_values(path_std, grid)
+    risk_std = calculate_route_risk(path_std, grid)
+    fuel_std = estimate_fuel(dist_std, vessel, ice_std, wave_std)
+
+    std_route = {
+        "route_id": "STD-" + uuid.uuid4().hex[:8].upper(),
+        "points": points_std,
+        "distance_km": round(dist_std, 3),
+        "estimated_fuel_cost": round(fuel_std, 2) if fuel_std else None,
+        "risk_level": risk_std,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "algorithm": "A* (Shortest Distance)",
+        "average_ice_concentration": round(ice_std, 4),
+        "average_wave_height_m": round(wave_std, 3),
+        "vessel_id": vessel.vessel_id
+    }
+
+    # Calculate comparison metrics
+    dist_increase_pct = max(0.0, round(((dist_fe - dist_std) / dist_std) * 100, 1)) if dist_std > 0 else 0.0
+    fuel_saved_pct = max(0.0, round(((fuel_std - fuel_fe) / fuel_std) * 100, 1)) if fuel_std and fuel_fe and fuel_std > 0 else 0.0
+
+    summary_text = (
+        f"The recommended route is {dist_increase_pct}% longer but is estimated to use {fuel_saved_pct}% less fuel "
+        f"by avoiding heavier ice conditions."
+        if fuel_saved_pct > 0 else
+        f"The recommended route provides optimal passage distance ({dist_fe:.1f} km) under current conditions."
+    )
+
+    # Save fuel efficient route to database
     connection = get_connection()
     cursor = connection.cursor()
     cursor.execute(
         "INSERT INTO routes (route_id, points, distance_km, estimated_fuel_cost, risk_level, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-        (route["route_id"], json.dumps(route_points), route["distance_km"], route["estimated_fuel_cost"], route["risk_level"], route["timestamp"])
+        (fe_route["route_id"], json.dumps(points_fe), fe_route["distance_km"], fe_route["estimated_fuel_cost"], fe_route["risk_level"], fe_route["timestamp"])
     )
     connection.commit()
     connection.close()
 
-    return {"status": "success", "algorithm": "A*", "route": route}
+    return {
+        "status": "success",
+        "standard_route": std_route,
+        "fuel_efficient_route": fe_route,
+        "distance_increase_percent": dist_increase_pct,
+        "fuel_saved_percent": fuel_saved_pct,
+        "summary": summary_text,
+        "note": "Prototype estimated fuel saving based on configured environmental fuel model."
+    }
+
 
 @app.post("/routes")
 def save_route(route: Route):
@@ -445,8 +521,60 @@ def daylight(latitude: float, longitude: float):
     return {"status": "success", "latitude": latitude, "longitude": longitude, **result}
 
 # ---------------------------------------------------------
+# AIS VESSELS & NCPOR FLEET
+# ---------------------------------------------------------
+@app.post("/ais/vessels")
+def update_ais_vessel(vessel: AISVessel):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        INSERT OR REPLACE INTO ais_vessels
+        (vessel_id, name, latitude, longitude, speed_knots, heading_degrees, is_ncpor_fleet, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (vessel.vessel_id, vessel.name, vessel.latitude, vessel.longitude, vessel.speed_knots, vessel.heading_degrees, int(vessel.is_ncpor_fleet), vessel.timestamp)
+    )
+    connection.commit()
+    connection.close()
+    return {"status": "success", "vessel": vessel.model_dump()}
+
+@app.get("/ais/vessels")
+def get_ais_vessels():
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT * FROM ais_vessels ORDER BY vessel_id")
+    rows = cursor.fetchall()
+    
+    cursor.execute("SELECT latitude, longitude FROM ship_positions ORDER BY id DESC LIMIT 1")
+    ship_row = cursor.fetchone()
+    connection.close()
+
+    ship_lat = ship_row["latitude"] if ship_row else None
+    ship_lon = ship_row["longitude"] if ship_row else None
+
+    result = []
+    for row in rows:
+        data = dict(row)
+        data["is_ncpor_fleet"] = bool(data["is_ncpor_fleet"])
+        data.update(get_freshness_status(data["timestamp"]))
+        
+        if ship_lat is not None and ship_lon is not None:
+            distance_km = haversine_distance_km(ship_lat, ship_lon, data["latitude"], data["longitude"])
+            data["distance_to_ship_km"] = round(distance_km, 2)
+            data["proximity_alert"] = distance_km <= 20.0
+        else:
+            data["distance_to_ship_km"] = None
+            data["proximity_alert"] = False
+
+        result.append(data)
+
+    return build_data_response(result)
+
+# ---------------------------------------------------------
 # SYSTEM STATUS
 # ---------------------------------------------------------
+
 @app.get("/system/status")
 def system_status():
     connection = get_connection()
