@@ -1,0 +1,2 @@
+case,iceberg_id,start_time,forecast_hours,number_of_trajectory_records,initial_latitude,initial_longitude,final_latitude,final_longitude,status
+D28,D28,,6.0,0,,,,,OPENBERG_GEOMETRY_INCOMPATIBLE
