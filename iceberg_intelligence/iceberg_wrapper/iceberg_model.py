@@ -133,7 +133,12 @@ class IcebergDriftModel:
     # Running
     # ------------------------------------------------------------------
 
-    def run(self, hours: float, time_step_seconds: int = 1800) -> None:
+    def run(
+        self,
+        hours: float,
+        time_step_seconds: int = 1800,
+        outfile: Optional[Union[str, Path]] = None,
+    ) -> None:
         """Run the simulation for the given duration."""
         if not self._id_by_trajectory:
             raise IcebergDriftModelError("no icebergs have been seeded -- call add_icebergs() first")
@@ -142,7 +147,11 @@ class IcebergDriftModel:
 
         logger.info("Running simulation for %.2f hours...", hours)
         try:
-            self.model.run(duration=timedelta(hours=hours), time_step=time_step_seconds)
+            self.model.run(
+                duration=timedelta(hours=hours),
+                time_step=time_step_seconds,
+                outfile=str(outfile) if outfile else None,
+            )
         except Exception as exc:
             raise IcebergDriftModelError(f"OpenBerg run() failed: {exc}") from exc
 
