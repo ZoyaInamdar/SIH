@@ -1,0 +1,3 @@
+TimeSeparation,X_i,Y_i,MedianZ_i,Density_i,Volume_i,X_f,Y_f,MedianZ_f,Density_f,Volume_f,VerticalAdjustment_i,VerticalAdjustment_f,ElevationChange_mean,ElevationChange_stdev,VolumeChangeRate,VolumeChangeRate_uncert,MedianDraft_mean,MedianDraft_range,SurfaceArea_mean,SurfaceArea_range,SubmergedArea_mean,SubmergedArea_uncert
+762.236909722211,-1452900,780900,23.669,887.16,313670000,-1454000,782030,22.903,885.99,301530000,-8.9989,-5.8064,0.71809,0.6688,13357.0982523851,5539.52170101573,171.99,6.3702,1926800,1411,2984300,18153.4
+762.236909722211,-1450600,783510,23.988,887.78,96668000,-1451200,785120,22.707,885.65,91923000,-6.9993,-3.9307,1.076,0.62282,5476.75522697106,1235.86981517562,172.55,10.7866,526710,6352,1045600,6251.4

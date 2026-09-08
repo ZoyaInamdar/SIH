@@ -67,3 +67,10 @@ temp/
 *.onnx
 *.pkl
 *.joblib
+
+# Generated/cache files
+*.idx
+__MACOSX/
+._*
+__pycache__/
+*.pyc
