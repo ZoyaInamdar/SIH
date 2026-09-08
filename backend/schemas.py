@@ -140,6 +140,29 @@ class RouteComparisonResponse(BaseModel):
     summary: str
 
 
+class RiskFusionRequest(BaseModel):
+    run_id: str = "route_A"
+    vessel_class: str = "PC4"
+    corridor_km: float = Field(default=50.0, gt=0)
+    iceberg_buffer_km: float = Field(default=10.0, gt=0)
+    forecast_hours: float = Field(default=6.0, ge=0)
+    enable_iceberg_prediction: bool = True
+
+
+class DashboardSummary(BaseModel):
+    status: str
+    latest_ship_position: Optional[dict] = None
+    iceberg_count: int = 0
+    hazard_count: int = 0
+    ais_vessel_count: int = 0
+    route_count: int = 0
+    freshness_status: str = "FRESH"
+    system_health: dict = {}
+    timestamp: str
+
+
+
+
 
 @dataclass
 class SonarTarget:

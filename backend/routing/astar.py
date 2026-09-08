@@ -12,7 +12,13 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 def point_inside_hazard(latitude: float, longitude: float, hazards: List[dict]) -> bool:
     for hazard in hazards:
         radius_m = float(hazard.get("radius_m", 0))
-        distance_m = haversine_distance_km(latitude, longitude, hazard["latitude"], hazard["longitude"]) * 1000
+        h_lat = float(hazard.get("latitude", 0))
+        h_lon = float(hazard.get("longitude", 0))
+        # Rapid bounding box rejection before trigonometric haversine
+        max_deg = (radius_m / 111000.0) + 0.02
+        if abs(latitude - h_lat) > max_deg or abs(longitude - h_lon) > max_deg * 2.5:
+            continue
+        distance_m = haversine_distance_km(latitude, longitude, h_lat, h_lon) * 1000
         if distance_m <= radius_m:
             return True
     return False
@@ -51,7 +57,11 @@ class AStarRouter:
         ]
 
     def heuristic(self, point: GridPoint, goal: GridPoint) -> float:
-        return math.sqrt((goal[0] - point[0]) ** 2 + (goal[1] - point[1]) ** 2)
+        curr = self.grid[point[0]][point[1]]
+        dest = self.grid[goal[0]][goal[1]]
+        dlat = (dest["latitude"] - curr["latitude"]) * 111.12
+        dlon = (dest["longitude"] - curr["longitude"]) * 52.0  # Cosine factor at ~62S
+        return math.sqrt(dlat * dlat + dlon * dlon)
 
     def calculate_cell_cost(self, current: GridPoint, neighbor: GridPoint) -> float:
         current_cell = self.grid[current[0]][current[1]]

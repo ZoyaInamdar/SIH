@@ -1,40 +1,83 @@
-# Python
-
-**pycache**/
+# ============================================================
+# Python & Virtual Environments
+# ============================================================
+__pycache__/
 *.py[cod]
+*$py.class
 *.pyo
-
-# Virtual environments
+*.pyd
 
 venv/
 .venv/
 env/
+ENV/
+env.bak/
+venv.bak/
 
-# Environment variables / secrets
-
+# ============================================================
+# Environment Variables & Secrets
+# ============================================================
 .env
 .env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 !.env.example
 
-# IDE
-
+# ============================================================
+# IDE, OS & System Files
+# ============================================================
 .vscode/
 .idea/
-
-# OS
-
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Node
-
+# ============================================================
+# Node, Vite & Frontend Artifacts
+# ============================================================
 node_modules/
+frontend/node_modules/
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 dist/
+dist-ssr/
+frontend/dist/
 build/
+.cache/
+.parcel-cache/
+*.tsbuildinfo
+.eslintcache
 
-# Large datasets
+# ============================================================
+# Testing, Coverage & Logs
+# ============================================================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+tmp/
+temp/
+*.log
+*.bak
 
+# ============================================================
+# Local Databases
+# ============================================================
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# ============================================================
+# Large Geospatial Data & Satellite Rasters
+# ============================================================
 *.nc
 *.nc4
 *.h5
@@ -43,48 +86,28 @@ build/
 *.grib2
 *.tif
 *.tiff
+*.geotiff
 
-# Temporary files
-
-tmp/
-temp/
-*.log
-
-# Python cache
-
-.pytest_cache/
-
-# Local databases
-
-*.db
-*.sqlite
-*.sqlite3
-
-# Large model files
-
+# ============================================================
+# Large Model Files & Weights
+# ============================================================
 *.pt
 *.pth
 *.onnx
 *.pkl
 *.joblib
+*.bin
+*.safetensors
 
-# Keep the trained sonar model in the repository
+# Keep specific models needed by application
 !data/sonar/outputs/yolo/sonar_yolo26n/weights/best.pt
 
 # ============================================================
-# Sonar / FLS dataset
+# Sonar / FLS Dataset & Training Outputs
 # ============================================================
-
-# Original Marine Debris FLS dataset
 data/sonar/data/raw/
-
-# Converted YOLO dataset
 data/sonar/yolo/
-
-# Temporary sonar test outputs
 data/sonar/outputs/yolo_test/
-
-# YOLO training artifacts
 data/sonar/outputs/yolo/*/args.yaml
 data/sonar/outputs/yolo/*/results.csv
 data/sonar/outputs/yolo/*/results.png
@@ -96,8 +119,6 @@ data/sonar/outputs/yolo/*/BoxP_curve.png
 data/sonar/outputs/yolo/*/BoxR_curve.png
 data/sonar/outputs/yolo/*/labels.jpg
 data/sonar/outputs/yolo/*/labels_correlogram.jpg
-
-# Keep best.pt, but don't commit last.pt
 data/sonar/outputs/yolo/*/weights/last.pt
 
 # Dataset archives

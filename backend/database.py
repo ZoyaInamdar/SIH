@@ -137,9 +137,34 @@ def initialize_database():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS fused_risk_grid (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL,
+            sic REAL NOT NULL,
+            sit REAL,
+            rio REAL,
+            dliri REAL,
+            iceberg_presence INTEGER NOT NULL DEFAULT 0,
+            iceberg_distance_km REAL,
+            iceberg_forecast_time TEXT,
+            sea_ice_risk TEXT NOT NULL,
+            iceberg_risk TEXT NOT NULL,
+            risk_score REAL NOT NULL,
+            risk_score_type TEXT NOT NULL,
+            operational_risk TEXT NOT NULL,
+            risk_source TEXT NOT NULL,
+            vessel_class TEXT NOT NULL,
+            timestamp TEXT NOT NULL
+        )
+    """)
+
     connection.commit()
 
     connection.close()
+
 
 
 
