@@ -118,9 +118,54 @@ def initialize_database():
         )
     """)
 
+    try:
+        cursor.execute("ALTER TABLE routes ADD COLUMN points TEXT NOT NULL DEFAULT '[]'")
+    except sqlite3.OperationalError:
+        pass
+
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ais_vessels (
+            vessel_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL,
+            speed_knots REAL NOT NULL DEFAULT 0.0,
+            heading_degrees REAL NOT NULL DEFAULT 0.0,
+            is_ncpor_fleet INTEGER NOT NULL DEFAULT 0,
+            timestamp TEXT NOT NULL
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS fused_risk_grid (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL,
+            sic REAL NOT NULL,
+            sit REAL,
+            rio REAL,
+            dliri REAL,
+            iceberg_presence INTEGER NOT NULL DEFAULT 0,
+            iceberg_distance_km REAL,
+            iceberg_forecast_time TEXT,
+            sea_ice_risk TEXT NOT NULL,
+            iceberg_risk TEXT NOT NULL,
+            risk_score REAL NOT NULL,
+            risk_score_type TEXT NOT NULL,
+            operational_risk TEXT NOT NULL,
+            risk_source TEXT NOT NULL,
+            vessel_class TEXT NOT NULL,
+            timestamp TEXT NOT NULL
+        )
+    """)
+
     connection.commit()
 
     connection.close()
+
+
 
 
 if __name__ == "__main__":

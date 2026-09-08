@@ -1,0 +1,21 @@
+{
+  "observation_id": "OBS_SONAR_0001",
+  "source_type": "SONAR",
+  "sonar": {
+    "targets": [
+      {
+        "bounding_box": [
+          161,
+          565,
+          23,
+          18
+        ],
+        "detection_confidence": 0.4709,
+        "target_class": null
+      }
+    ],
+    "range_m": null,
+    "bearing_deg": null
+  },
+  "observed_at": "2026-09-07T05:58:46.269400+00:00"
+}

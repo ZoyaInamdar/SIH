@@ -12,13 +12,19 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 def point_inside_hazard(latitude: float, longitude: float, hazards: List[dict]) -> bool:
     for hazard in hazards:
         radius_m = float(hazard.get("radius_m", 0))
-        distance_m = haversine_distance_km(latitude, longitude, hazard["latitude"], hazard["longitude"]) * 1000
+        h_lat = float(hazard.get("latitude", 0))
+        h_lon = float(hazard.get("longitude", 0))
+        # Rapid bounding box rejection before trigonometric haversine
+        max_deg = (radius_m / 111000.0) + 0.02
+        if abs(latitude - h_lat) > max_deg or abs(longitude - h_lon) > max_deg * 2.5:
+            continue
+        distance_m = haversine_distance_km(latitude, longitude, h_lat, h_lon) * 1000
         if distance_m <= radius_m:
             return True
     return False
 
 class AStarRouter:
-    def __init__(self, grid: List[List[dict]], hazards: Optional[List[dict]] = None):
+    def __init__(self, grid: List[List[dict]], hazards: Optional[List[dict]] = None, ignore_environmental_penalties: bool = False):
         if not grid or not grid[0]:
             raise ValueError("Grid cannot be empty.")
         width = len(grid[0])
@@ -29,6 +35,7 @@ class AStarRouter:
         self.rows = len(grid)
         self.cols = width
         self.hazards = hazards or []
+        self.ignore_environmental_penalties = ignore_environmental_penalties
 
     def valid_point(self, point: GridPoint) -> bool:
         row, col = point
@@ -50,7 +57,11 @@ class AStarRouter:
         ]
 
     def heuristic(self, point: GridPoint, goal: GridPoint) -> float:
-        return math.sqrt((goal[0] - point[0]) ** 2 + (goal[1] - point[1]) ** 2)
+        curr = self.grid[point[0]][point[1]]
+        dest = self.grid[goal[0]][goal[1]]
+        dlat = (dest["latitude"] - curr["latitude"]) * 111.12
+        dlon = (dest["longitude"] - curr["longitude"]) * 52.0  # Cosine factor at ~62S
+        return math.sqrt(dlat * dlat + dlon * dlon)
 
     def calculate_cell_cost(self, current: GridPoint, neighbor: GridPoint) -> float:
         current_cell = self.grid[current[0]][current[1]]
@@ -59,11 +70,14 @@ class AStarRouter:
             current_cell["latitude"], current_cell["longitude"],
             next_cell["latitude"], next_cell["longitude"]
         )
+        if self.ignore_environmental_penalties:
+            return distance_km
         return movement_cost(
             distance_km=distance_km,
             sea_ice_concentration=next_cell.get("sea_ice", 0.0),
             wave_height_m=next_cell.get("wave_height", 0.0)
         )
+
 
     def find_route(self, start: GridPoint, goal: GridPoint) -> Optional[List[GridPoint]]:
         if not self.valid_point(start) or not self.valid_point(goal):

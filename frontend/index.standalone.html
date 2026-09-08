@@ -1,0 +1,1475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ANTARCNAV — Antarctic Navigation Decision Support System</title>
+  <meta name="description" content="Antarctic navigation decision-support system with 3D globe visualization, iceberg X-ray rendering, WMO sea-ice concentration heatmap, hazard zones, and real-time route planning.">
+
+  <!-- Google Fonts: Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Leaflet 1.9.4 (2D primary map) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- MapLibre GL JS 4.5.2 (3D globe) -->
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.5.2/dist/maplibre-gl.css">
+  <script src="https://unpkg.com/maplibre-gl@4.5.2/dist/maplibre-gl.js"></script>
+
+<style>
+/* ============================================================
+   ROOT TOKENS
+============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:          #010714;
+  --bg2:         #020c1e;
+  --panel:       rgba(4, 14, 38, 0.88);
+  --panel-b:     rgba(64, 148, 255, 0.16);
+  --accent:      #4fc3f7;
+  --accent2:     #00e5ff;
+  --glow:        rgba(79, 195, 247, 0.25);
+  --text:        #c5dff2;
+  --text-dim:    #546e8a;
+  --danger:      #ff5252;
+  --caution:     #ffd740;
+  --safe:        #69f0ae;
+  --route-a:     #69f0ae;
+  --route-b:     #4fc3f7;
+  --ship-col:    #ffd740;
+  --font:        'Outfit', sans-serif;
+  --mono:        'JetBrains Mono', monospace;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); overflow: hidden; }
+
+/* ============================================================
+   APP SHELL
+============================================================ */
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ── TOP BAR ── */
+#topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; height: 54px;
+  background: rgba(1, 6, 20, 0.97);
+  border-bottom: 1px solid var(--panel-b);
+  z-index: 500; flex-shrink: 0;
+}
+
+.logo {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: 0.8px;
+}
+.logo span { color: var(--text-dim); font-weight: 300; letter-spacing: 0.3px; }
+
+/* ── VIEW SWITCHER ── */
+#view-switcher {
+  display: flex;
+  background: rgba(0,0,0,0.5);
+  border: 1px solid var(--panel-b);
+  border-radius: 8px; overflow: hidden;
+}
+.vbtn {
+  padding: 7px 20px; font-family: var(--font); font-size: 12px; font-weight: 600;
+  color: var(--text-dim); background: transparent; border: none; cursor: pointer;
+  transition: all 0.2s ease; letter-spacing: 0.4px; text-transform: uppercase;
+}
+.vbtn:hover { color: var(--text); background: rgba(79,195,247,0.06); }
+.vbtn.active { background: rgba(79,195,247,0.14); color: var(--accent); }
+
+/* ── UTC CLOCK ── */
+#clock { font-size: 11px; color: var(--text-dim); font-family: var(--mono); letter-spacing: 0.5px; }
+
+/* ── MAP CONTAINER ── */
+#map-container { display: flex; flex: 1; overflow: hidden; position: relative; }
+
+/* ── VIEW PANELS ── */
+.view-panel {
+  position: relative; height: 100%; overflow: hidden;
+  transition: width 0.4s cubic-bezier(0.4,0,0.2,1), flex 0.4s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* Default state: 2D full-screen */
+#panel-2d { width: 100%; }
+#panel-3d { width: 0; }
+
+/* 3D full-screen */
+#map-container.mode-3d #panel-2d { width: 0; }
+#map-container.mode-3d #panel-3d { width: 100%; }
+
+/* Split view */
+#map-container.mode-split #panel-2d { width: 50%; }
+#map-container.mode-split #panel-3d { width: 50%; }
+
+.split-divider {
+  width: 2px; flex-shrink: 0;
+  background: linear-gradient(to bottom, transparent, var(--accent2) 30%, var(--accent2) 70%, transparent);
+  opacity: 0.3; display: none; z-index: 10;
+}
+#map-container.mode-split .split-divider { display: block; }
+
+/* ── INNER MAP CANVASES ── */
+#map2d, #map3d { width: 100%; height: 100%; }
+#map2d { background: #030d1e; }
+
+/* ── PANEL LABEL ── */
+.panel-label {
+  position: absolute; top: 14px; left: 14px; z-index: 400;
+  font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+  padding: 4px 10px; border-radius: 5px;
+}
+.panel-label.two-d {
+  color: var(--accent); background: rgba(3,8,25,0.85);
+  border: 1px solid var(--panel-b);
+}
+.panel-label.three-d {
+  color: var(--accent2); background: rgba(0,229,255,0.06);
+  border: 1px solid rgba(0,229,255,0.22);
+}
+
+/* ============================================================
+   GLASS PANEL
+============================================================ */
+.glass {
+  background: var(--panel);
+  border: 1px solid var(--panel-b);
+  border-radius: 10px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* ============================================================
+   3D — LAYER CONTROLS (top-right)
+============================================================ */
+#controls-3d {
+  position: absolute; top: 14px; right: 14px; z-index: 20;
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+.ctrl-panel { padding: 12px 14px; min-width: 190px; }
+
+.ctrl-title {
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1.4px; color: var(--text-dim); margin-bottom: 10px;
+}
+
+.tog-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 0;
+}
+.tog-label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; font-weight: 500; color: var(--text);
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* Toggle switch */
+.tswitch { position: relative; width: 32px; height: 18px; cursor: pointer; flex-shrink: 0; }
+.tswitch input { opacity: 0; width: 0; height: 0; }
+.ttrack {
+  position: absolute; inset: 0; border-radius: 9px;
+  background: rgba(255,255,255,0.08); transition: background 0.2s;
+}
+.ttrack::after {
+  content: ''; position: absolute; left: 2px; top: 2px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--text-dim); transition: all 0.2s;
+}
+.tswitch input:checked + .ttrack { background: rgba(79,195,247,0.35); }
+.tswitch input:checked + .ttrack::after { left: 16px; background: var(--accent); }
+
+/* ── X-RAY BUTTON ── */
+#xray-btn {
+  padding: 10px 14px; font-family: var(--font); font-size: 11px; font-weight: 700;
+  color: var(--accent); background: rgba(79,195,247,0.07);
+  border: 1px solid rgba(79,195,247,0.28); border-radius: 8px; cursor: pointer;
+  letter-spacing: 0.8px; text-align: center; text-transform: uppercase;
+  transition: all 0.25s ease; width: 100%;
+}
+#xray-btn:hover { background: rgba(79,195,247,0.15); border-color: var(--accent); }
+#xray-btn.active {
+  background: rgba(0,229,255,0.12); border-color: var(--accent2);
+  color: var(--accent2); box-shadow: 0 0 16px rgba(0,229,255,0.25), inset 0 0 8px rgba(0,229,255,0.05);
+  animation: xray-pulse 2.5s ease-in-out infinite;
+}
+@keyframes xray-pulse {
+  0%,100% { box-shadow: 0 0 16px rgba(0,229,255,0.25); }
+  50%      { box-shadow: 0 0 28px rgba(0,229,255,0.45); }
+}
+
+/* ============================================================
+   3D — CROSSHAIR HUD (center)
+============================================================ */
+#crosshair-wrap {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5; pointer-events: none;
+}
+#crosshair-hud {
+  position: absolute; top: 50%; left: calc(50% + 38px);
+  transform: translateY(-50%);
+  background: rgba(1,5,18,0.82);
+  border: 1px solid rgba(79,195,247,0.28);
+  border-radius: 6px; padding: 6px 10px;
+  font-size: 11px; font-family: var(--mono);
+  color: var(--accent); white-space: nowrap;
+  pointer-events: none;
+}
+.hud-row { display: flex; justify-content: space-between; gap: 12px; line-height: 1.7; }
+.hud-lbl { color: var(--text-dim); }
+.hud-val { color: var(--text); }
+
+/* ============================================================
+   3D — NAV BUTTONS (bottom-right)
+============================================================ */
+#nav-btns {
+  position: absolute; bottom: 110px; right: 14px;
+  z-index: 20; display: flex; flex-direction: column; gap: 8px;
+}
+.nav-btn {
+  width: 40px; height: 40px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; border: 1px solid var(--panel-b);
+  background: var(--panel); color: var(--text);
+  font-size: 18px; transition: all 0.2s;
+  backdrop-filter: blur(12px); user-select: none;
+}
+.nav-btn:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 12px var(--glow); }
+#compass-btn { transition: transform 0.4s ease, border-color 0.2s, box-shadow 0.2s; }
+
+/* ============================================================
+   3D — STATUS BAR (top-center)
+============================================================ */
+#statusbar {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  z-index: 20; padding: 6px 16px;
+  display: flex; gap: 18px; pointer-events: none; white-space: nowrap;
+}
+.stat-item {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 500; color: var(--text-dim);
+}
+.stat-item b { color: var(--text); }
+
+/* ============================================================
+   3D — WMO LEGEND (bottom-left)
+============================================================ */
+#wmo-legend {
+  position: absolute; bottom: 110px; left: 14px; z-index: 20; padding: 12px 14px;
+}
+.leg-title {
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1.2px; color: var(--text-dim); margin-bottom: 8px;
+}
+.leg-item {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; color: var(--text-dim); padding: 2px 0;
+}
+.leg-sw { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+
+/* ============================================================
+   3D — TIMELINE SCRUBBER (bottom-center)
+============================================================ */
+#timeline {
+  position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+  z-index: 20; padding: 10px 16px; min-width: 500px;
+}
+.tl-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1.2px; color: var(--text-dim); margin-bottom: 8px;
+}
+.tl-active { color: var(--accent2); font-weight: 600; }
+.tl-dates { display: flex; gap: 5px; }
+.tl-btn {
+  flex: 1; padding: 7px 8px; font-family: var(--font); font-size: 11px; font-weight: 500;
+  color: var(--text-dim); background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07); border-radius: 6px;
+  cursor: pointer; text-align: center; transition: all 0.18s; white-space: nowrap;
+}
+.tl-btn:hover { color: var(--text); border-color: rgba(79,195,247,0.25); }
+.tl-btn.active {
+  background: rgba(79,195,247,0.14); border-color: var(--accent); color: var(--accent);
+}
+
+/* ============================================================
+   DATA WARNINGS PANEL (top-left of 3D panel)
+============================================================ */
+#data-warnings {
+  position: absolute; top: 50px; left: 14px; z-index: 20;
+  max-width: 290px; display: none;
+}
+#data-warnings.has-warn { display: flex; flex-direction: column; gap: 5px; }
+.warn-item {
+  padding: 7px 10px;
+  background: rgba(255,82,82,0.1); border: 1px solid rgba(255,82,82,0.28);
+  border-radius: 6px; font-size: 11px; color: #ffcdd2;
+}
+
+/* ============================================================
+   ICEBERG INFO CARD (floating, position: fixed)
+============================================================ */
+#iceberg-card {
+  position: fixed; z-index: 600; width: 268px;
+  padding: 0; display: none; overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.7), 0 0 24px rgba(79,195,247,0.08);
+}
+#iceberg-card.visible { display: block; animation: card-in 0.22s ease; }
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.card-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px 10px;
+  background: rgba(0,229,255,0.05); border-bottom: 1px solid var(--panel-b);
+}
+.card-id { font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.5px; }
+.card-close {
+  width: 22px; height: 22px; border-radius: 4px; background: rgba(255,255,255,0.07);
+  border: none; color: var(--text-dim); cursor: pointer; font-size: 13px;
+  display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+}
+.card-close:hover { background: rgba(255,82,82,0.15); color: var(--danger); }
+
+.card-body { padding: 10px 14px 14px; }
+
+.card-field {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 12px; gap: 10px;
+}
+.card-field:last-child { border-bottom: none; }
+.f-lbl { color: var(--text-dim); flex-shrink: 0; }
+.f-val { color: var(--text); font-weight: 500; text-align: right; }
+
+.conf-row { display: flex; align-items: center; gap: 6px; }
+.conf-bar { width: 56px; height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; }
+.conf-fill { height: 100%; border-radius: 2px; }
+
+.badge {
+  padding: 2px 7px; border-radius: 4px; font-size: 10px;
+  font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+}
+.b-sat    { background: rgba(79,195,247,0.18); color: var(--accent); }
+.b-sonar  { background: rgba(105,240,174,0.18); color: var(--safe); }
+.b-tab    { background: rgba(255,215,64,0.14); color: var(--caution); }
+.b-ntab   { background: rgba(255,82,82,0.14); color: var(--danger); }
+.b-unk    { background: rgba(255,82,82,0.12); color: var(--danger); font-size: 10px; padding: 2px 7px; border-radius: 4px; font-weight: 700; }
+.b-fresh-live  { background: rgba(105,240,174,0.14); color: var(--safe); }
+.b-fresh-stale { background: rgba(255,215,64,0.14); color: var(--caution); }
+.b-fresh-off   { background: rgba(255,82,82,0.14); color: var(--danger); }
+
+/* ============================================================
+   LEAFLET OVERRIDES
+============================================================ */
+.leaflet-container { background: #030d1e !important; }
+.leaflet-tile { filter: brightness(0.75) saturate(0.5) hue-rotate(195deg); }
+.leaflet-control-attribution,
+.leaflet-control-zoom { display: none !important; }
+
+.lt-dark {
+  background: rgba(4,14,38,0.92) !important;
+  border: 1px solid var(--panel-b) !important;
+  color: var(--text) !important; font-family: var(--font) !important;
+  font-size: 12px !important; padding: 7px 11px !important;
+  border-radius: 7px !important; box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
+}
+.lt-dark::before { border-top-color: var(--panel-b) !important; }
+
+/* ============================================================
+   ANIMATIONS
+============================================================ */
+@keyframes ship-pulse {
+  0%   { transform: scale(1); opacity: 0.8; }
+  70%  { transform: scale(2.2); opacity: 0; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+@keyframes iceberg-hover-glow {
+  from { filter: drop-shadow(0 0 4px rgba(79,195,247,0.3)); }
+  to   { filter: drop-shadow(0 0 10px rgba(79,195,247,0.7)); }
+}
+
+.iceberg-svg-wrap:hover .surf-circle {
+  filter: brightness(1.25) drop-shadow(0 0 6px rgba(200,235,255,0.8));
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <div class="logo">
+      <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+        <circle cx="15" cy="15" r="13" stroke="#4fc3f7" stroke-width="1.4"
+          style="filter:drop-shadow(0 0 4px rgba(79,195,247,0.5))"/>
+        <ellipse cx="15" cy="15" rx="6" ry="13" stroke="#00e5ff" stroke-width="1"
+          stroke-dasharray="2,1" fill="none" opacity="0.7"/>
+        <line x1="2" y1="15" x2="28" y2="15" stroke="#4fc3f7" stroke-width="1" opacity="0.5"/>
+        <line x1="15" y1="9" x2="15" y2="21" stroke="#4fc3f7" stroke-width="0.8" opacity="0.5"/>
+        <circle cx="15" cy="15" r="2.5" fill="#00e5ff"
+          style="filter:drop-shadow(0 0 3px rgba(0,229,255,0.8))"/>
+      </svg>
+      ANTARCNAV&ensp;<span>/ Antarctic Navigation Decision Support System</span>
+    </div>
+
+    <div id="view-switcher">
+      <button class="vbtn active" id="btn-2d" onclick="switchView('2d')">2D Chart</button>
+      <button class="vbtn"        id="btn-3d" onclick="switchView('3d')">3D Globe</button>
+      <button class="vbtn"     id="btn-split" onclick="switchView('split')">Split View</button>
+    </div>
+
+    <div id="clock">—</div>
+  </div>
+
+  <!-- MAP CONTAINER -->
+  <div id="map-container">
+
+    <!-- 2D PANEL -->
+    <div class="view-panel" id="panel-2d">
+      <div id="map2d"></div>
+      <div class="panel-label two-d">2D Navigation Chart (Primary)</div>
+    </div>
+
+    <div class="split-divider"></div>
+
+    <!-- 3D PANEL -->
+    <div class="view-panel" id="panel-3d">
+      <div id="map3d"></div>
+      <div class="panel-label three-d">3D Globe · Additive View</div>
+
+      <!-- Layer toggles -->
+      <div id="controls-3d">
+        <div class="glass ctrl-panel">
+          <div class="ctrl-title">Layers</div>
+          <div class="tog-row">
+            <span class="tog-label"><span class="dot" style="background:#4fc3f7"></span>Ice Concentration</span>
+            <label class="tswitch"><input type="checkbox" checked id="tog-ice" onchange="setLayer('iceConcentration',this.checked)"><span class="ttrack"></span></label>
+          </div>
+          <div class="tog-row">
+            <span class="tog-label"><span class="dot" style="background:#e0f0ff"></span>Icebergs</span>
+            <label class="tswitch"><input type="checkbox" checked id="tog-icb" onchange="setLayer('icebergs',this.checked)"><span class="ttrack"></span></label>
+          </div>
+          <div class="tog-row">
+            <span class="tog-label"><span class="dot" style="background:#ff5252"></span>Hazard Zones</span>
+            <label class="tswitch"><input type="checkbox" checked id="tog-hz" onchange="setLayer('hazardZones',this.checked)"><span class="ttrack"></span></label>
+          </div>
+          <div class="tog-row">
+            <span class="tog-label"><span class="dot" style="background:#69f0ae"></span>Routes</span>
+            <label class="tswitch"><input type="checkbox" checked id="tog-rt" onchange="setLayer('routes',this.checked)"><span class="ttrack"></span></label>
+          </div>
+          <div class="tog-row">
+            <span class="tog-label"><span class="dot" style="background:#ffd740"></span>Ship</span>
+            <label class="tswitch"><input type="checkbox" checked id="tog-ship" onchange="setLayer('ship',this.checked)"><span class="ttrack"></span></label>
+          </div>
+        </div>
+
+        <button id="xray-btn" onclick="toggleXray()">⬡ &nbsp;X-Ray View &nbsp;OFF</button>
+      </div>
+
+      <!-- Crosshair + HUD -->
+      <div id="crosshair-wrap">
+        <svg width="62" height="62" viewBox="0 0 62 62" fill="none">
+          <circle cx="31" cy="31" r="19"
+            stroke="rgba(79,195,247,0.4)" stroke-width="1" stroke-dasharray="3,3"/>
+          <line x1="31" y1="6"  x2="31" y2="20" stroke="rgba(79,195,247,0.6)" stroke-width="1"/>
+          <line x1="31" y1="42" x2="31" y2="56" stroke="rgba(79,195,247,0.6)" stroke-width="1"/>
+          <line x1="6"  y1="31" x2="20" y2="31" stroke="rgba(79,195,247,0.6)" stroke-width="1"/>
+          <line x1="42" y1="31" x2="56" y2="31" stroke="rgba(79,195,247,0.6)" stroke-width="1"/>
+          <circle cx="31" cy="31" r="2"
+            fill="#00e5ff" style="filter:drop-shadow(0 0 3px #00e5ff)"/>
+        </svg>
+        <div id="crosshair-hud">
+          <div class="hud-row"><span class="hud-lbl">LAT</span><span class="hud-val" id="hud-lat">—</span></div>
+          <div class="hud-row"><span class="hud-lbl">LON</span><span class="hud-val" id="hud-lon">—</span></div>
+          <div class="hud-row"><span class="hud-lbl">ICE</span><span class="hud-val" id="hud-ice">—</span></div>
+        </div>
+      </div>
+
+      <!-- Nav buttons -->
+      <div id="nav-btns">
+        <div class="nav-btn" id="compass-btn" onclick="resetNorth()" title="Reset North (N up)">🧭</div>
+        <div class="nav-btn" onclick="locateShip()" title="Fly to ship position">🎯</div>
+      </div>
+
+      <!-- Status bar -->
+      <div id="statusbar" class="glass">
+        <div class="stat-item">🧊 <b id="stat-icb">—</b> icebergs</div>
+        <div class="stat-item">⚠ <b id="stat-hz">—</b> hazard zones</div>
+        <div class="stat-item">📡 <b id="stat-fresh">—</b></div>
+      </div>
+
+      <!-- WMO Legend -->
+      <div id="wmo-legend" class="glass">
+        <div class="leg-title">WMO Sea Ice Scale</div>
+        <div class="leg-item"><div class="leg-sw" style="background:#0a1628"></div>&lt;1/10 Open water</div>
+        <div class="leg-item"><div class="leg-sw" style="background:#0d4f8c"></div>1–3/10 Very open pack</div>
+        <div class="leg-item"><div class="leg-sw" style="background:#1a7f55"></div>4–6/10 Open pack</div>
+        <div class="leg-item"><div class="leg-sw" style="background:#c49c14"></div>7–8/10 Close pack</div>
+        <div class="leg-item"><div class="leg-sw" style="background:#c84a0a"></div>9–9+/10 Very close pack</div>
+        <div class="leg-item"><div class="leg-sw" style="background:#dde8f0"></div>10/10 Consolidated</div>
+      </div>
+
+      <!-- Timeline scrubber -->
+      <div id="timeline" class="glass">
+        <div class="tl-head">
+          <span>Sea Ice Forecast Grid</span>
+          <span class="tl-active" id="tl-active">—</span>
+        </div>
+        <div class="tl-dates" id="tl-dates"></div>
+      </div>
+
+      <!-- Data warnings -->
+      <div id="data-warnings"></div>
+    </div>
+
+  </div><!-- /map-container -->
+</div><!-- /app -->
+
+<!-- Iceberg info card -->
+<div id="iceberg-card" class="glass">
+  <div class="card-hdr">
+    <span class="card-id" id="card-id">—</span>
+    <button class="card-close" onclick="closeCard()">✕</button>
+  </div>
+  <div class="card-body" id="card-body"></div>
+</div>
+
+<script>
+let ICEBERG_DATA = [
+  {
+    id: "ICB-2026-A23A",
+    lat: -64.52, lon: -52.33,
+    timestamp: "2026-09-08T01:30:00Z",
+    size_class: "very_large",
+    shape_class: "tabular",
+    surface_area_km2: 1247.3,
+    estimated_draft_m: 312.8,
+    draft_confidence: 0.85,
+    source: "satellite"
+  },
+  {
+    id: "ICB-2026-B09",
+    lat: -67.18, lon: -48.74,
+    timestamp: "2026-09-08T01:30:00Z",
+    size_class: "large",
+    shape_class: "tabular",
+    surface_area_km2: 342.5,
+    estimated_draft_m: 187.4,
+    draft_confidence: 0.90,
+    source: "sonar_corrected"
+  },
+  {
+    id: "ICB-2026-C47",
+    lat: -70.05, lon: -39.81,
+    timestamp: "2026-09-08T01:30:00Z",
+    size_class: "medium",
+    shape_class: "non_tabular",
+    surface_area_km2: 58.7,
+    estimated_draft_m: 110.0,
+    draft_confidence: 0.65,
+    source: "satellite"
+  },
+  {
+    id: "ICB-2026-E03",
+    lat: -65.44, lon: -60.02,
+    timestamp: "2026-09-08T01:30:00Z",
+    size_class: "small",
+    shape_class: "non_tabular",
+    surface_area_km2: 12.3,
+    estimated_draft_m: 47.2,
+    draft_confidence: 0.92,
+    source: "sonar_corrected"
+  }
+];
+
+let ROUTE_DATA = [
+  {
+    route_id: "RTE-ALPHA",
+    waypoints: [
+      { lat: -55.0, lon: -66.0 }, { lat: -58.5, lon: -60.2 },
+      { lat: -62.0, lon: -55.0 }, { lat: -65.8, lon: -50.4 }
+    ],
+    distance_km: 1482.3, fuel_score: 0.78,
+    vs_shortest_path_pct_longer: 12.4, vs_shortest_path_pct_fuel_saved: 8.1,
+    hazard_zones_crossed: 1
+  }
+];
+
+let HAZARD_ZONES = [
+  {
+    zone_id: "HZ-001",
+    polygon: [
+      { lat: -63.0, lon: -55.0 }, { lat: -63.0, lon: -50.0 },
+      { lat: -66.0, lon: -50.0 }, { lat: -66.0, lon: -55.0 }
+    ],
+    risk_level: "caution",
+    source_layer: "ice_concentration",
+    last_updated: "2026-09-08T01:30:00Z",
+    data_freshness: "live"
+  }
+];
+
+let SHIP_DATA = {
+  ship_id: "MV-VASILIY-GOLOVNIN",
+  polar_class: "Arc5",
+  hull_ice_resistance_rating: 0.85,
+  current_position: { lat: -65.5, lon: -55.0 },
+  heading_deg: 135,
+  speed_knots: 12.4
+};
+
+let FORECAST_GRID = [
+  { date: "2026-09-08", concentration_bias:  0.00 },
+  { date: "2026-09-09", concentration_bias:  0.03 },
+  { date: "2026-09-10", concentration_bias: -0.02 },
+  { date: "2026-09-11", concentration_bias:  0.05 }
+];
+
+const LAYER_STATE = {
+  icebergs:         true,
+  hazardZones:      true,
+  routes:           true,
+  ship:             true,
+  iceConcentration: true,
+  xray:             false
+};
+
+let currentView   = '2d';
+let currentDate   = FORECAST_GRID[0].date;
+let map2d         = null;
+let map3d         = null;
+let map3dLoaded   = false;
+
+const r2 = {
+  heatLayer:   null,
+  icebergs:    [],
+  hazards:     [],
+  routes:      [],
+  ship:        null
+};
+
+const markers3d = [];
+const validationWarnings = [];
+
+const WMO = {
+  open_water:   '#0a1628',
+  very_open:    '#0d4f8c',
+  open_pack:    '#1a7f55',
+  close_pack:   '#c49c14',
+  very_close:   '#c84a0a',
+  consolidated: '#dde8f0'
+};
+
+function wmoColor(c) {
+  if (c < 0.10) return WMO.open_water;
+  if (c < 0.35) return WMO.very_open;
+  if (c < 0.65) return WMO.open_pack;
+  if (c < 0.85) return WMO.close_pack;
+  if (c < 0.98) return WMO.very_close;
+  return WMO.consolidated;
+}
+
+function wmoExpression() {
+  return [
+    'step', ['get', 'concentration'],
+    WMO.open_water,
+    0.10, WMO.very_open,
+    0.35, WMO.open_pack,
+    0.65, WMO.close_pack,
+    0.85, WMO.very_close,
+    0.98, WMO.consolidated
+  ];
+}
+
+function getConcentration(lat, lon, bias) {
+  const a = Math.abs(lat);
+  let base;
+  if      (a < 60) base = 0.03;
+  else if (a < 63) base = 0.22;
+  else if (a < 66) base = 0.48;
+  else if (a < 70) base = 0.70;
+  else if (a < 74) base = 0.87;
+  else             base = 0.97;
+
+  const inWeddell = lon >= -60 && lon <= 0;
+  const inRoss    = lon >= 180 || lon <= -150;
+  const inIndian  = lon >= 20  && lon <= 90;
+
+  if (inWeddell) base = Math.min(1, base + 0.14);
+  if (inRoss)    base = Math.min(1, base + 0.10);
+  if (inIndian)  base = Math.min(1, base + 0.05);
+
+  return Math.max(0, Math.min(1, base + (bias || 0)));
+}
+
+function buildGridGeoJSON(bias) {
+  const step = 10;
+  const features = [];
+  for (let lon = -180; lon < 180; lon += step) {
+    for (let lat = -80; lat < -55; lat += step) {
+      const conc = getConcentration(lat + step / 2, lon + step / 2, bias);
+      features.push({
+        type: 'Feature',
+        properties: { concentration: parseFloat(conc.toFixed(3)) },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[
+            [lon, lat], [lon + step, lat],
+            [lon + step, lat + step], [lon, lat + step],
+            [lon, lat]
+          ]]
+        }
+      });
+    }
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+function currentGridEntry() {
+  return FORECAST_GRID.find(e => e.date === currentDate) || FORECAST_GRID[0];
+}
+
+function validateData() {
+  validationWarnings.length = 0;
+  const warnEl = document.getElementById('data-warnings');
+
+  ICEBERG_DATA.forEach(icb => {
+    const issues = [];
+    if (icb.lat == null || isNaN(icb.lat))         issues.push('missing lat');
+    if (icb.lon == null || isNaN(icb.lon))         issues.push('missing lon');
+    if (!icb.surface_area_km2)                     issues.push('missing surface_area_km2');
+    if (!icb.size_class)                           issues.push('missing size_class');
+    if (!icb.shape_class)                          issues.push('missing shape_class');
+    if (issues.length) validationWarnings.push({ id: icb.id, issues });
+  });
+
+  if (validationWarnings.length) {
+    warnEl.classList.add('has-warn');
+    warnEl.innerHTML = validationWarnings.map(w =>
+      `<div class="warn-item glass">⚠ <b>${w.id}</b>: ${w.issues.join(', ')}</div>`
+    ).join('');
+  }
+}
+
+function isRenderable(icb) {
+  return icb.lat != null && !isNaN(icb.lat) && icb.lon != null && !isNaN(icb.lon);
+}
+
+function isMalformed(id) {
+  return validationWarnings.some(w => w.id === id);
+}
+
+function setLayer(key, value) {
+  LAYER_STATE[key] = value;
+  render2D();
+  render3D();
+}
+
+function toggleXray() {
+  LAYER_STATE.xray = !LAYER_STATE.xray;
+  const btn = document.getElementById('xray-btn');
+  if (LAYER_STATE.xray) {
+    btn.classList.add('active');
+    btn.innerHTML = '⬡ &nbsp;X-Ray View &nbsp;ON';
+    if (map3dLoaded) map3d.easeTo({ pitch: 50, duration: 900 });
+  } else {
+    btn.classList.remove('active');
+    btn.innerHTML = '⬡ &nbsp;X-Ray View &nbsp;OFF';
+    if (map3dLoaded) map3d.easeTo({ pitch: 0, duration: 900 });
+  }
+  render2D();
+  render3D();
+}
+
+function switchView(mode) {
+  currentView = mode;
+  document.getElementById('map-container').className = 'mode-' + mode;
+  ['2d', '3d', 'split'].forEach(m =>
+    document.getElementById('btn-' + m).classList.toggle('active', m === mode)
+  );
+
+  if ((mode === '3d' || mode === 'split') && !map3d) {
+    setTimeout(init3D, 120);
+  }
+
+  setTimeout(() => {
+    if (map2d) map2d.invalidateSize();
+    if (map3d && map3dLoaded) map3d.resize();
+  }, 460);
+}
+
+const SIZE_R = { small: 7, medium: 14, large: 22, very_large: 36 };
+const DRAFT_MULT = { tabular: 1.85, non_tabular: 2.55 };
+
+function dashArray(conf) {
+  const c = conf != null ? Math.max(0, Math.min(1, conf)) : 0;
+  const gap  = Math.round(3 + (1 - c) * 14);
+  const dash = Math.max(2, Math.round(8 - (1 - c) * 5));
+  return `${dash},${gap}`;
+}
+
+function underwaterOpacity(conf) {
+  const c = conf != null ? Math.max(0, Math.min(1, conf)) : 0;
+  return 0.12 + c * 0.44;
+}
+
+function buildIcebergSVG(icb) {
+  const sr = SIZE_R[icb.size_class] || 10;
+  const ur = sr * (DRAFT_MULT[icb.shape_class] || 2.2);
+  const showXray  = LAYER_STATE.xray;
+  const hasDraft  = icb.estimated_draft_m != null;
+  const conf      = icb.draft_confidence;
+  const da        = dashArray(conf);
+  const uOp       = underwaterOpacity(conf);
+
+  const outerR = showXray ? ur + 6 : sr + 6;
+  const sz = Math.ceil(outerR * 2 + 8);
+  const cx = sz / 2;
+
+  const sfill  = icb.shape_class === 'tabular' ? 'rgba(215,240,255,0.93)' : 'rgba(170,210,255,0.87)';
+  const sstroke = icb.shape_class === 'tabular' ? 'rgba(255,255,255,0.95)' : 'rgba(140,200,255,0.88)';
+
+  let underwater = '';
+  if (showXray) {
+    if (hasDraft) {
+      underwater = `
+        <circle cx="${cx}" cy="${cx}" r="${ur}"
+          fill="rgba(50,200,255,${(uOp * 0.22).toFixed(3)})"
+          stroke="rgba(50,200,255,${uOp.toFixed(3)})"
+          stroke-width="1.5" stroke-dasharray="${da}"/>`;
+    }
+  }
+
+  const badge = isMalformed(icb.id)
+    ? `<text x="${cx + sr - 1}" y="${cx - sr + 5}" font-size="9" fill="#ffd740">!</text>`
+    : '';
+
+  return `
+<svg width="${sz}" height="${sz}" viewBox="0 0 ${sz} ${sz}"
+     class="iceberg-svg-wrap" style="overflow:visible;display:block;cursor:pointer">
+  <defs>
+    <radialGradient id="sg-${icb.id}" cx="38%" cy="35%" r="60%">
+      <stop offset="0%"   stop-color="rgba(255,255,255,0.95)"/>
+      <stop offset="100%" stop-color="rgba(120,190,255,0.0)"/>
+    </radialGradient>
+  </defs>
+  ${underwater}
+  <circle class="surf-circle" cx="${cx}" cy="${cx}" r="${sr}"
+    fill="${sfill}" stroke="${sstroke}" stroke-width="1.5"/>
+  <circle cx="${cx}" cy="${cx}" r="${sr * 0.55}"
+    fill="url(#sg-${icb.id})" opacity="0.55"/>
+  ${badge}
+</svg>`;
+}
+
+function openCard(icb, clientX, clientY) {
+  document.getElementById('card-id').textContent = icb.id;
+
+  const conf     = icb.draft_confidence;
+  const safeConf = conf != null ? Math.max(0, Math.min(1, conf)) : 0;
+  const confPct  = conf != null ? (safeConf * 100).toFixed(0) + '%' : 'Unknown';
+  const confCol  = conf == null ? '#ff5252' :
+                   safeConf >= 0.7 ? '#69f0ae' :
+                   safeConf >= 0.4 ? '#ffd740' : '#ff5252';
+
+  const hasDraft = icb.estimated_draft_m != null;
+  const draftHtml = hasDraft
+    ? `<span class="f-val">${icb.estimated_draft_m.toFixed(1)} m</span>`
+    : `<span class="badge b-unk">UNKNOWN</span>`;
+
+  const srcBadge   = icb.source === 'satellite'
+    ? `<span class="badge b-sat">satellite</span>`
+    : `<span class="badge b-sonar">sonar-corrected</span>`;
+
+  const shapeBadge = icb.shape_class === 'tabular'
+    ? `<span class="badge b-tab">tabular</span>`
+    : `<span class="badge b-ntab">non-tabular</span>`;
+
+  const ts = new Date(icb.timestamp).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short'
+  });
+
+  document.getElementById('card-body').innerHTML = `
+    <div class="card-field"><span class="f-lbl">Size class</span>
+      <span class="f-val">${icb.size_class.replace('_', ' ')}</span></div>
+    <div class="card-field"><span class="f-lbl">Shape</span>${shapeBadge}</div>
+    <div class="card-field"><span class="f-lbl">Surface area</span>
+      <span class="f-val">${icb.surface_area_km2.toLocaleString()} km²</span></div>
+    <div class="card-field"><span class="f-lbl">Est. draft</span>${draftHtml}</div>
+    <div class="card-field"><span class="f-lbl">Draft confidence</span>
+      <div class="conf-row">
+        <div class="conf-bar"><div class="conf-fill"
+          style="width:${safeConf*100}%;background:${confCol}"></div></div>
+        <span class="f-val" style="color:${confCol}">${confPct}</span>
+      </div>
+    </div>
+    <div class="card-field"><span class="f-lbl">Source</span>${srcBadge}</div>
+    <div class="card-field"><span class="f-lbl">Observed</span>
+      <span class="f-val" style="font-size:10px">${ts}</span></div>`;
+
+  const cw = 268, ch = 310, m = 16;
+  let cx = clientX + 14, cy = clientY - 24;
+  if (cx + cw > window.innerWidth - m)   cx = clientX - cw - 14;
+  if (cy + ch > window.innerHeight - m)  cy = window.innerHeight - ch - m;
+  if (cy < m)                            cy = m;
+
+  const card = document.getElementById('iceberg-card');
+  card.style.left = cx + 'px';
+  card.style.top  = cy + 'px';
+  card.classList.add('visible');
+}
+
+function closeCard() {
+  document.getElementById('iceberg-card').classList.remove('visible');
+}
+
+document.addEventListener('click', e => {
+  const card = document.getElementById('iceberg-card');
+  if (card.classList.contains('visible') &&
+      !card.contains(e.target) && !e.target.closest('.iceberg-svg-wrap')) {
+    closeCard();
+  }
+});
+
+function init2D() {
+  map2d = L.map('map2d', { center: [-65, -50], zoom: 4, zoomControl: false });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png', {
+    subdomains: 'abcd', maxZoom: 14, attribution: '© CARTO © OSM'
+  }).addTo(map2d);
+  render2D();
+}
+
+function render2D() {
+  if (!map2d) return;
+
+  r2.icebergs.forEach(l => map2d.removeLayer(l));  r2.icebergs = [];
+  r2.hazards.forEach(l => map2d.removeLayer(l));   r2.hazards  = [];
+  r2.routes.forEach(l => map2d.removeLayer(l));    r2.routes   = [];
+  if (r2.ship) { map2d.removeLayer(r2.ship); r2.ship = null; }
+
+  if (r2.heatLayer) map2d.removeLayer(r2.heatLayer);
+  if (LAYER_STATE.iceConcentration) {
+    const entry = currentGridEntry();
+    r2.heatLayer = L.geoJSON(buildGridGeoJSON(entry.concentration_bias), {
+      style: f => ({
+        fillColor: wmoColor(f.properties.concentration),
+        fillOpacity: 0.48, color: 'transparent', weight: 0
+      })
+    }).addTo(map2d);
+  }
+
+  if (LAYER_STATE.hazardZones) {
+    const riskCol = { 'no_go': '#ff5252', 'caution': '#ffd740', 'safe': '#69f0ae' };
+    HAZARD_ZONES.forEach(zone => {
+      const col  = riskCol[zone.risk_level] || '#888';
+      const poly = L.polygon(zone.polygon.map(p => [p.lat, p.lon]), {
+        color: col, fillColor: col, fillOpacity: 0.16, weight: 1.5,
+        dashArray: zone.risk_level === 'no_go' ? '5,4' : null
+      }).bindTooltip(
+        `<b>${zone.zone_id}</b><br>${zone.risk_level.replace('_', ' ').toUpperCase()}<br>
+         ${zone.data_freshness} · ${zone.source_layer}`,
+        { className: 'lt-dark' }
+      ).addTo(map2d);
+      r2.hazards.push(poly);
+    });
+  }
+
+  if (LAYER_STATE.routes) {
+    const cols = ['#69f0ae', '#4fc3f7'];
+    ROUTE_DATA.forEach((route, i) => {
+      const col  = cols[i % 2];
+      const line = L.polyline(route.waypoints.map(w => [w.lat, w.lon]), {
+        color: col, weight: 2.5, opacity: 0.88,
+        dashArray: i === 1 ? '7,5' : null
+      }).bindTooltip(
+        `<b>${route.route_id}</b><br>${route.distance_km.toLocaleString()} km`,
+        { className: 'lt-dark' }
+      ).addTo(map2d);
+      r2.routes.push(line);
+
+      route.waypoints.forEach(wp => {
+        const dot = L.circleMarker([wp.lat, wp.lon], {
+          radius: 3.5, fillColor: col, color: '#fff', weight: 1.2, fillOpacity: 1
+        }).addTo(map2d);
+        r2.routes.push(dot);
+      });
+    });
+  }
+
+  if (LAYER_STATE.icebergs) {
+    ICEBERG_DATA.forEach(icb => {
+      if (!isRenderable(icb)) return;
+      const sr = SIZE_R[icb.size_class] || 10;
+      const sz = (LAYER_STATE.xray
+        ? sr * (DRAFT_MULT[icb.shape_class] || 2.2)
+        : sr) * 2 + 16;
+
+      const marker = L.marker([icb.lat, icb.lon], {
+        icon: L.divIcon({
+          html: buildIcebergSVG(icb),
+          className: '',
+          iconSize: [sz, sz],
+          iconAnchor: [sz / 2, sz / 2]
+        }),
+        zIndexOffset: 100
+      }).on('click', e => openCard(icb, e.originalEvent.clientX, e.originalEvent.clientY))
+        .addTo(map2d);
+      r2.icebergs.push(marker);
+    });
+  }
+
+  if (LAYER_STATE.ship) {
+    const pos = SHIP_DATA.current_position;
+    const hdg = SHIP_DATA.heading_deg;
+    const shipHtml = `
+      <div style="position:relative;width:28px;height:28px">
+        <div style="position:absolute;inset:-8px;border:1.5px solid rgba(255,215,64,0.55);
+          border-radius:50%;animation:ship-pulse 2.2s ease-out infinite;pointer-events:none"></div>
+        <svg width="28" height="28" viewBox="0 0 28 28">
+          <polygon points="14,4 22,22 14,17 6,22"
+            fill="#ffd740" stroke="rgba(255,255,255,0.6)" stroke-width="1"
+            transform="rotate(${hdg - 90},14,14)"
+            style="filter:drop-shadow(0 0 4px rgba(255,215,64,0.6))"/>
+        </svg>
+      </div>`;
+
+    r2.ship = L.marker([pos.lat, pos.lon], {
+      icon: L.divIcon({ html: shipHtml, className: '', iconSize: [28, 28], iconAnchor: [14, 14] }),
+      zIndexOffset: 200
+    }).bindTooltip(
+      `<b>${SHIP_DATA.ship_id}</b><br>Polar class ${SHIP_DATA.polar_class}
+       · ${SHIP_DATA.speed_knots} kn · ${hdg}°`,
+      { className: 'lt-dark' }
+    ).addTo(map2d);
+  }
+}
+
+function init3D() {
+  if (map3d) return;
+
+  map3d = new maplibregl.Map({
+    container: 'map3d',
+    style: {
+      version: 8,
+      sources: {
+        carto: {
+          type: 'raster',
+          tiles: [
+            'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+            'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+            'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'
+          ],
+          tileSize: 512,
+          maxzoom: 14,
+          attribution: '© OpenStreetMap contributors © CARTO'
+        }
+      },
+      layers: [
+        { id: 'background', type: 'background',
+          paint: { 'background-color': '#010714' } },
+        { id: 'basemap', type: 'raster', source: 'carto',
+          paint: { 'raster-opacity': 0.88 } }
+      ]
+    },
+    center: [-50, -65],
+    zoom: 3,
+    pitch: 0,
+    bearing: 0,
+    attributionControl: false
+  });
+
+  map3d.on('load', () => {
+    map3d.setProjection({ type: 'globe' });
+    map3d.setFog({
+      'color':         '#08144a',
+      'high-color':    '#010510',
+      'horizon-blend':  0.022,
+      'space-color':   '#010714',
+      'star-intensity': 0.65
+    });
+
+    map3dLoaded = true;
+    add3DGridSource();
+    render3D();
+    initCrosshair();
+    updateStatusBar();
+  });
+
+  map3d.on('move',   updateCrosshair);
+  map3d.on('rotate', () => {
+    const b = map3d.getBearing();
+    document.getElementById('compass-btn').style.transform = `rotate(${-b}deg)`;
+  });
+}
+
+function safeAddSource(id, spec) {
+  if (!map3d.getSource(id)) map3d.addSource(id, spec);
+}
+
+function safeAddLayer(spec) {
+  if (!map3d.getLayer(spec.id)) {
+    try { map3d.addLayer(spec); } catch (e) {}
+  }
+}
+
+function setVis(layerId, vis) {
+  if (map3d.getLayer(layerId))
+    map3d.setLayoutProperty(layerId, 'visibility', vis ? 'visible' : 'none');
+}
+
+function add3DGridSource() {
+  const entry = currentGridEntry();
+  safeAddSource('ice-grid', {
+    type: 'geojson',
+    data: buildGridGeoJSON(entry.concentration_bias)
+  });
+  safeAddLayer({
+    id: 'ice-concentration',
+    type: 'fill',
+    source: 'ice-grid',
+    paint: {
+      'fill-color':         wmoExpression(),
+      'fill-opacity':       0.55,
+      'fill-outline-color': 'rgba(0,0,0,0)'
+    }
+  });
+}
+
+function render3D() {
+  if (!map3d || !map3dLoaded) return;
+  setVis('ice-concentration', LAYER_STATE.iceConcentration);
+  render3DHazards();
+  render3DRoutes();
+  render3DShip();
+  render3DIcebergs();
+}
+
+function render3DHazards() {
+  const vis = LAYER_STATE.hazardZones;
+  const riskCol = { 'no_go': '#ff5252', 'caution': '#ffd740', 'safe': '#69f0ae' };
+
+  HAZARD_ZONES.forEach(zone => {
+    const col   = riskCol[zone.risk_level] || '#888';
+    const srcId = 'hz-src-' + zone.zone_id;
+    const fillId = 'hz-fill-' + zone.zone_id;
+    const lineId = 'hz-line-' + zone.zone_id;
+
+    const ring = zone.polygon.map(p => [p.lon, p.lat]);
+    ring.push(ring[0]);
+
+    safeAddSource(srcId, {
+      type: 'geojson',
+      data: { type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] },
+              properties: { risk: zone.risk_level, freshness: zone.data_freshness } }
+    });
+    safeAddLayer({
+      id: fillId, type: 'fill', source: srcId,
+      paint: { 'fill-color': col, 'fill-opacity': 0.16 }
+    });
+    safeAddLayer({
+      id: lineId, type: 'line', source: srcId,
+      paint: {
+        'line-color': col, 'line-width': 1.6,
+        'line-dasharray': zone.risk_level === 'no_go' ? [4, 3] : [1]
+      }
+    });
+
+    setVis(fillId, vis);
+    setVis(lineId, vis);
+  });
+}
+
+function render3DRoutes() {
+  const vis  = LAYER_STATE.routes;
+  const cols = ['#69f0ae', '#4fc3f7'];
+
+  ROUTE_DATA.forEach((route, i) => {
+    const srcId  = 'rt-src-' + route.route_id;
+    const lineId = 'rt-line-' + route.route_id;
+    const col    = cols[i % 2];
+
+    safeAddSource(srcId, {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: route.waypoints.map(w => [w.lon, w.lat]) },
+        properties: {}
+      }
+    });
+    safeAddLayer({
+      id: lineId, type: 'line', source: srcId,
+      paint: {
+        'line-color': col, 'line-width': 2.5, 'line-opacity': 0.88,
+        'line-dasharray': i === 1 ? [6, 4] : [1]
+      }
+    });
+
+    setVis(lineId, vis);
+  });
+}
+
+function render3DShip() {
+  const vis = LAYER_STATE.ship;
+  const pos = SHIP_DATA.current_position;
+
+  safeAddSource('ship-src', {
+    type: 'geojson',
+    data: {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [pos.lon, pos.lat] },
+      properties: {}
+    }
+  });
+
+  safeAddLayer({
+    id: 'ship-ring', type: 'circle', source: 'ship-src',
+    paint: {
+      'circle-radius': 14, 'circle-color': 'rgba(255,215,64,0)',
+      'circle-stroke-color': '#ffd740', 'circle-stroke-width': 1.5,
+      'circle-stroke-opacity': 0.45
+    }
+  });
+  safeAddLayer({
+    id: 'ship-dot', type: 'circle', source: 'ship-src',
+    paint: {
+      'circle-radius': 6, 'circle-color': '#ffd740',
+      'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5
+    }
+  });
+
+  setVis('ship-ring', vis);
+  setVis('ship-dot',  vis);
+}
+
+function render3DIcebergs() {
+  markers3d.forEach(m => m.remove());
+  markers3d.length = 0;
+
+  if (!LAYER_STATE.icebergs) return;
+
+  ICEBERG_DATA.forEach(icb => {
+    if (!isRenderable(icb)) return;
+
+    const el = document.createElement('div');
+    el.innerHTML = buildIcebergSVG(icb);
+    el.style.cssText = 'cursor:pointer;';
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      openCard(icb, e.clientX, e.clientY);
+    });
+
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([icb.lon, icb.lat])
+      .addTo(map3d);
+    markers3d.push(marker);
+  });
+}
+
+function initCrosshair() { updateCrosshair(); }
+
+function updateCrosshair() {
+  if (!map3d || !map3dLoaded) return;
+  const ctr  = map3d.getCenter();
+  const bias = currentGridEntry().concentration_bias;
+  const conc = getConcentration(ctr.lat, ctr.lng, bias);
+  const label = conc < 0.10 ? 'Open water' :
+                conc < 0.35 ? 'Very open' :
+                conc < 0.65 ? 'Open pack' :
+                conc < 0.85 ? 'Close pack' :
+                conc < 0.98 ? 'Very close' : 'Consolidated';
+
+  document.getElementById('hud-lat').textContent = ctr.lat.toFixed(4) + '°';
+  document.getElementById('hud-lon').textContent = ctr.lng.toFixed(4) + '°';
+  document.getElementById('hud-ice').textContent = (conc * 100).toFixed(0) + '% · ' + label;
+}
+
+function resetNorth() {
+  if (map3d) map3d.easeTo({
+    bearing: 0, pitch: LAYER_STATE.xray ? 50 : 0, duration: 650
+  });
+  document.getElementById('compass-btn').style.transform = 'rotate(0deg)';
+}
+
+function locateShip() {
+  const pos = SHIP_DATA.current_position;
+  if (map3d) map3d.flyTo({
+    center: [pos.lon, pos.lat], zoom: 5.5, pitch: 20, duration: 2000, essential: true
+  });
+}
+
+function initTimeline() {
+  const container = document.getElementById('tl-dates');
+  const activeEl  = document.getElementById('tl-active');
+
+  FORECAST_GRID.forEach(entry => {
+    const d   = new Date(entry.date + 'T00:00:00Z');
+    const lbl = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+
+    const btn = document.createElement('button');
+    btn.className = 'tl-btn' + (entry.date === currentDate ? ' active' : '');
+    btn.textContent = lbl;
+    btn.dataset.date = entry.date;
+    btn.onclick = () => {
+      document.querySelectorAll('.tl-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentDate = entry.date;
+      activeEl.textContent = lbl;
+      updateHeatmap();
+    };
+    container.appendChild(btn);
+  });
+
+  const firstD = new Date(currentDate + 'T00:00:00Z');
+  activeEl.textContent = firstD.toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', timeZone: 'UTC'
+  });
+}
+
+function updateHeatmap() {
+  const entry   = currentGridEntry();
+  const newGrid = buildGridGeoJSON(entry.concentration_bias);
+
+  if (map3d && map3d.getSource('ice-grid')) {
+    map3d.getSource('ice-grid').setData(newGrid);
+  }
+
+  if (map2d) {
+    if (r2.heatLayer) { map2d.removeLayer(r2.heatLayer); r2.heatLayer = null; }
+    if (LAYER_STATE.iceConcentration) {
+      r2.heatLayer = L.geoJSON(newGrid, {
+        style: f => ({
+          fillColor: wmoColor(f.properties.concentration),
+          fillOpacity: 0.48, color: 'transparent', weight: 0
+        })
+      }).addTo(map2d);
+    }
+  }
+
+  updateCrosshair();
+}
+
+function updateStatusBar() {
+  document.getElementById('stat-icb').textContent   = ICEBERG_DATA.length;
+  document.getElementById('stat-hz').textContent    = HAZARD_ZONES.length;
+  const anyLive  = HAZARD_ZONES.some(z => z.data_freshness === 'live');
+  const anyStale = HAZARD_ZONES.some(z => z.data_freshness === 'stale');
+  const fresh = anyLive ? '🟢 live data' : anyStale ? '🟡 stale' : '🔴 offline cached';
+  document.getElementById('stat-fresh').textContent = fresh;
+}
+
+function updateClock() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById('clock').textContent =
+    `${now.getUTCFullYear()}-${pad(now.getUTCMonth()+1)}-${pad(now.getUTCDate())} ` +
+    `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())} UTC`;
+}
+
+// ── LIVE BACKEND FASTAPI INTEGRATION ──────────────────────────────
+async function fetchLiveBackendData() {
+  const BACKEND = typeof window !== "undefined" && window.location.origin.includes("http") 
+    ? window.location.origin.replace(":3000", ":8000") 
+    : "http://127.0.0.1:8000";
+
+  try {
+    const res = await fetch(`${BACKEND}/icebergs`);
+    if (res.ok) {
+      const json = await res.json();
+      const list = json.data || json;
+      if (Array.isArray(list) && list.length > 0) {
+        ICEBERG_DATA = list.map(b => ({
+          id: b.iceberg_id ?? b.id,
+          lat: Number(b.current_latitude ?? b.lat),
+          lon: Number(b.current_longitude ?? b.lon),
+          timestamp: b.timestamp || new Date().toISOString(),
+          size_class: b.length_m > 1000 ? "very_large" : b.length_m > 500 ? "large" : b.length_m > 200 ? "medium" : "small",
+          shape_class: b.shape_class ?? "tabular",
+          surface_area_km2: Math.round(((b.length_m || 500) * (b.width_m || 300)) / 1e6 * 10) / 10 || 120.0,
+          estimated_draft_m: b.estimated_draft_m,
+          draft_confidence: b.confidence ?? 0.85,
+          source: b.source ?? "satellite"
+        }));
+        render2D();
+        render3D();
+        updateStatusBar();
+      }
+    }
+  } catch (e) {}
+
+  try {
+    const res = await fetch(`${BACKEND}/ship/latest`);
+    if (res.ok) {
+      const json = await res.json();
+      if (json.data) {
+        SHIP_DATA.current_position = { lat: Number(json.data.latitude), lon: Number(json.data.longitude) };
+        SHIP_DATA.heading_deg = Number(json.data.heading_degrees) || 135;
+        SHIP_DATA.speed_knots = Number(json.data.speed_knots) || 12.4;
+        render2D();
+        render3D();
+      }
+    }
+  } catch (e) {}
+
+  try {
+    const wsHost = BACKEND.replace(/^http/, "ws");
+    const ws = new WebSocket(`${wsHost}/ws/nmea`);
+    ws.onmessage = (evt) => {
+      try {
+        const data = JSON.parse(evt.data);
+        const lat = Number(data.latitude ?? data.lat);
+        const lon = Number(data.longitude ?? data.lon);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          SHIP_DATA.current_position = { lat, lon };
+          SHIP_DATA.heading_deg = Number(data.heading_degrees ?? data.heading) || 0;
+          SHIP_DATA.speed_knots = Number(data.speed_knots) || 0;
+          render2D();
+          render3D();
+        }
+      } catch (err) {}
+    };
+  } catch (e) {}
+
+  try {
+    const res = await fetch(`${BACKEND}/hazards`);
+    if (res.ok) {
+      const json = await res.json();
+      const list = json.data || json;
+      if (Array.isArray(list) && list.length > 0) {
+        HAZARD_ZONES = list.map(h => ({
+          zone_id: h.id,
+          polygon: [
+            { lat: h.latitude - 0.05, lon: h.longitude - 0.05 },
+            { lat: h.latitude - 0.05, lon: h.longitude + 0.05 },
+            { lat: h.latitude + 0.05, lon: h.longitude + 0.05 },
+            { lat: h.latitude + 0.05, lon: h.longitude - 0.05 }
+          ],
+          risk_level: h.risk_level === "restricted" ? "no_go" : h.risk_level ?? "caution",
+          source_layer: h.source ?? "sonar",
+          last_updated: h.timestamp || new Date().toISOString(),
+          data_freshness: h.freshness_status ?? "live"
+        }));
+        render2D();
+        render3D();
+        updateStatusBar();
+      }
+    }
+  } catch (e) {}
+}
+
+validateData();
+init2D();
+initTimeline();
+updateClock();
+setInterval(updateClock, 1000);
+fetchLiveBackendData();
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "images": 1868,
+  "ground_truth_boxes": 2364,
+  "predicted_boxes": 7366,
+  "true_positives": 0,
+  "false_positives": 7366,
+  "false_negatives": 2364,
+  "iou_threshold": 0.3,
+  "precision": 0.0,
+  "recall": 0.0,
+  "f1": 0.0,
+  "mean_matched_iou": 0.0,
+  "mean_detection_score": 0.4773168519906476
+}
