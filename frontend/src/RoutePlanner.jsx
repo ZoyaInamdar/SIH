@@ -149,14 +149,14 @@ function RoutePlanner({
       const crossesIslandBarrier = (sLat > -62.50 && dLat < -62.75) || (dLat > -62.50 && sLat < -62.75);
 
       if (crossesIslandBarrier) {
-        // Route through English / McFarlane Strait water passage around Livingston Island
-        corridorWaypoints.push({ latitude: -62.44, longitude: (sLon + -60.10) / 2 });
-        corridorWaypoints.push({ latitude: -62.48, longitude: -60.06 });
-        corridorWaypoints.push({ latitude: -62.68, longitude: -59.86 });
-        corridorWaypoints.push({ latitude: -62.80, longitude: -59.62 });
+        // Route through safe Boyd Strait open ocean channel (between Smith and Snow Island)
+        corridorWaypoints.push({ latitude: -62.50, longitude: -61.90 });
+        corridorWaypoints.push({ latitude: -62.80, longitude: -61.50 });
+        corridorWaypoints.push({ latitude: -62.84, longitude: -60.50 });
+        corridorWaypoints.push({ latitude: -62.77, longitude: -60.00 });
       } else {
-        // Safe passage in Bransfield Strait or Drake Passage
-        const midLat = Math.min(-62.80, Math.max(-63.10, (sLat + dLat) / 2));
+        // Safe passage in Bransfield Strait or Drake Passage deep water
+        const midLat = Math.min(-62.83, Math.max(-63.00, (sLat + dLat) / 2));
         const midLon = (sLon + dLon) / 2;
         corridorWaypoints.push({ latitude: midLat, longitude: midLon });
       }

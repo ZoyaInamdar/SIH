@@ -32,7 +32,7 @@ const FALLBACK_ICEBERGS = [
     length_m: 3800,
     width_m: 2400,
     freeboard_m: 42,
-    estimated_draft_m: 280,
+    estimated_draft_m: 315,
     confidence: 0.94,
     shape_class: "tabular",
     size_class: "very_large"
@@ -40,27 +40,40 @@ const FALLBACK_ICEBERGS = [
   {
     id: "ICB-2026-B15A",
     iceberg_id: "ICB-2026-B15A",
-    lat: -62.90,
-    lon: -59.10,
-    length_m: 1600,
-    width_m: 950,
-    freeboard_m: 32,
-    estimated_draft_m: 210,
-    confidence: 0.88,
+    lat: -62.65,
+    lon: -59.78,
+    length_m: 1800,
+    width_m: 1100,
+    freeboard_m: 34,
+    estimated_draft_m: 240,
+    confidence: 0.89,
     shape_class: "tabular",
     size_class: "large"
   },
   {
     id: "ICB-2026-PINN",
     iceberg_id: "ICB-2026-PINN",
-    lat: -62.35,
-    lon: -61.00,
-    length_m: 750,
-    width_m: 480,
-    freeboard_m: 55,
+    lat: -62.78,
+    lon: -59.35,
+    length_m: 850,
+    width_m: 520,
+    freeboard_m: 58,
     estimated_draft_m: 195,
-    confidence: 0.81,
-    shape_class: "pinnacled",
+    confidence: 0.85,
+    shape_class: "pinnacle",
+    size_class: "medium"
+  },
+  {
+    id: "ICB-2026-DOME",
+    iceberg_id: "ICB-2026-DOME",
+    lat: -62.85,
+    lon: -58.45,
+    length_m: 1100,
+    width_m: 700,
+    freeboard_m: 28,
+    estimated_draft_m: 165,
+    confidence: 0.91,
+    shape_class: "domed",
     size_class: "medium"
   }
 ];
@@ -69,17 +82,29 @@ const FALLBACK_ICEBERGS = [
 const DEFAULT_FAIRWAY_ROUTE = {
   route_id: "DEFAULT-FAIRWAY",
   name: "Bransfield Deep Ocean Fairway",
-  distance_km: 118.5,
+  distance_km: 197.6,
   points: [
-    { longitude: -62.00, latitude: -62.10 },
-    { longitude: -61.20, latitude: -62.30 },
-    { longitude: -60.50, latitude: -62.44 },
-    { longitude: -60.06, latitude: -62.48 },
-    { longitude: -59.86, latitude: -62.68 },
-    { longitude: -59.50, latitude: -62.80 },
-    { longitude: -58.20, latitude: -62.88 }
+    { longitude: -62.00, latitude: -62.90 }, // WP-1: Bransfield Deep Ocean Southwest
+    { longitude: -61.20, latitude: -62.86 }, // WP-2: Bransfield Central Channel
+    { longitude: -60.50, latitude: -62.83 }, // WP-3: North of Deception Island / Deep Fairway
+    { longitude: -60.00, latitude: -62.77 }, // WP-4: Bransfield Open Fairway South of Hurd
+    { longitude: -59.78, latitude: -62.72 }, // WP-5: Open Water Fairway Approach to ICB-2026-A23A
+    { longitude: -59.35, latitude: -62.78 }, // WP-6: Deep Ocean Fairway South of Robert Island
+    { longitude: -58.20, latitude: -62.88 }  // WP-7: Antarctic Sound Deep Water Approach
   ]
 };
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = Cesium.Math.toRadians(lat2 - lat1);
+  const dLon = Cesium.Math.toRadians(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(Cesium.Math.toRadians(lat1)) *
+      Math.cos(Cesium.Math.toRadians(lat2)) *
+      Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
 
 function calculateBearing(lat1, lon1, lat2, lon2) {
   const y = Math.sin(Cesium.Math.toRadians(lon2 - lon1)) * Math.cos(Cesium.Math.toRadians(lat2));
@@ -92,89 +117,307 @@ function calculateBearing(lat1, lon1, lat2, lon2) {
   return (brng + 360) % 360;
 }
 
-function getRouteProgressState(points, progress) {
-  if (!points || points.length === 0) return null;
-  if (points.length === 1 || progress <= 0) {
-    const p0 = points[0];
-    const p1 = points[1] || points[0];
-    const heading = calculateBearing(p0.latitude, p0.longitude, p1.latitude, p1.longitude);
-    return {
-      lat: p0.latitude,
-      lon: p0.longitude,
-      heading,
-      currentSegmentIndex: 0,
-      totalSegments: Math.max(1, points.length - 1),
-      remainingDistKm: 0
-    };
-  }
-
-  // Calculate cumulative distances
-  const distances = [];
+// Precomputed route distances and segment lengths
+function getRouteDistances(points) {
+  const segDistances = [];
   let totalDist = 0;
   for (let i = 0; i < points.length - 1; i++) {
-    const d = haversineKm(points[i].latitude, points[i].longitude, points[i + 1].latitude, points[i + 1].longitude);
-    distances.push(d);
+    const lat0 = Number(points[i].latitude ?? points[i].lat);
+    const lon0 = Number(points[i].longitude ?? points[i].lon);
+    const lat1 = Number(points[i + 1].latitude ?? points[i + 1].lat);
+    const lon1 = Number(points[i + 1].longitude ?? points[i + 1].lon);
+    const d = haversineKm(lat0, lon0, lat1, lon1);
+    segDistances.push(d);
     totalDist += d;
   }
+  return { segDistances, totalDist: Math.max(0.001, totalDist) };
+}
 
-  if (progress >= 1.0) {
-    const pLast = points[points.length - 1];
-    const pPrev = points[points.length - 2] || pLast;
-    const heading = calculateBearing(pPrev.latitude, pPrev.longitude, pLast.latitude, pLast.longitude);
+// Evaluates nominal route coordinate at distance s (km) along the route
+function getNominalPosAtDistance(points, segDistances, totalDist, s) {
+  if (!points || points.length === 0) return null;
+  const clampedS = Math.max(0, Math.min(totalDist, s));
+  if (clampedS <= 0 || points.length === 1) {
     return {
-      lat: pLast.latitude,
-      lon: pLast.longitude,
-      heading,
-      currentSegmentIndex: points.length - 2,
-      totalSegments: points.length - 1,
-      remainingDistKm: 0
+      lat: Number(points[0].latitude ?? points[0].lat),
+      lon: Number(points[0].longitude ?? points[0].lon),
+      segIndex: 0
+    };
+  }
+  if (clampedS >= totalDist) {
+    const last = points[points.length - 1];
+    return {
+      lat: Number(last.latitude ?? last.lat),
+      lon: Number(last.longitude ?? last.lon),
+      segIndex: Math.max(0, points.length - 2)
     };
   }
 
-  const targetDist = progress * totalDist;
-  let accumulated = 0;
-  for (let i = 0; i < distances.length; i++) {
-    const segLen = distances[i];
-    if (accumulated + segLen >= targetDist || i === distances.length - 1) {
-      const segT = segLen > 0 ? (targetDist - accumulated) / segLen : 0;
+  let accum = 0;
+  for (let i = 0; i < segDistances.length; i++) {
+    const segLen = segDistances[i];
+    if (accum + segLen >= clampedS || i === segDistances.length - 1) {
+      const t = segLen > 0 ? (clampedS - accum) / segLen : 0;
       const p0 = points[i];
       const p1 = points[i + 1];
-      const lat = p0.latitude + (p1.latitude - p0.latitude) * segT;
-      const lon = p0.longitude + (p1.longitude - p0.longitude) * segT;
-      const heading = calculateBearing(p0.latitude, p0.longitude, p1.latitude, p1.longitude);
+      const lat0 = Number(p0.latitude ?? p0.lat);
+      const lon0 = Number(p0.longitude ?? p0.lon);
+      const lat1 = Number(p1.latitude ?? p1.lat);
+      const lon1 = Number(p1.longitude ?? p1.lon);
       return {
-        lat,
-        lon,
-        heading,
-        currentSegmentIndex: i,
-        totalSegments: points.length - 1,
-        remainingDistKm: Math.max(0, totalDist - targetDist)
+        lat: lat0 + (lat1 - lat0) * t,
+        lon: lon0 + (lon1 - lon0) * t,
+        segIndex: i
       };
     }
-    accumulated += segLen;
+    accum += segLen;
   }
-
-  const pLast = points[points.length - 1];
+  const last = points[points.length - 1];
   return {
-    lat: pLast.latitude,
-    lon: pLast.longitude,
-    heading: 0,
-    currentSegmentIndex: points.length - 2,
-    totalSegments: points.length - 1,
-    remainingDistKm: 0
+    lat: Number(last.latitude ?? last.lat),
+    lon: Number(last.longitude ?? last.lon),
+    segIndex: Math.max(0, points.length - 2)
   };
 }
 
-function haversineKm(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = Cesium.Math.toRadians(lat2 - lat1);
-  const dLon = Cesium.Math.toRadians(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(Cesium.Math.toRadians(lat1)) *
-      Math.cos(Cesium.Math.toRadians(lat2)) *
-      Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
+// Determines the Closest Point of Approach (CPA) on the route centerline for an iceberg
+function findIcebergCPAOnRoute(berg, points, segDistances, totalDist) {
+  const bLat = Number(berg.current_latitude ?? berg.lat ?? berg.latitude);
+  const bLon = Number(berg.current_longitude ?? berg.lon ?? berg.longitude);
+  if (!Number.isFinite(bLat) || !Number.isFinite(bLon)) return null;
+
+  // Search along route to find closest s
+  const steps = Math.max(30, Math.ceil(totalDist / 2.0));
+  let bestS = 0;
+  let minD = Infinity;
+  for (let i = 0; i <= steps; i++) {
+    const s = (i / steps) * totalDist;
+    const pos = getNominalPosAtDistance(points, segDistances, totalDist, s);
+    const d = haversineKm(pos.lat, pos.lon, bLat, bLon);
+    if (d < minD) {
+      minD = d;
+      bestS = s;
+    }
+  }
+
+  // Refine around bestS
+  const stepSize = totalDist / steps;
+  let refineS = bestS;
+  for (let ds = -stepSize; ds <= stepSize; ds += stepSize / 5) {
+    const s = Math.max(0, Math.min(totalDist, bestS + ds));
+    const pos = getNominalPosAtDistance(points, segDistances, totalDist, s);
+    const d = haversineKm(pos.lat, pos.lon, bLat, bLon);
+    if (d < minD) {
+      minD = d;
+      refineS = s;
+    }
+  }
+
+  // Determine consistent steer direction at CPA
+  const posA = getNominalPosAtDistance(points, segDistances, totalDist, Math.max(0, refineS - 1.5));
+  const posB = getNominalPosAtDistance(points, segDistances, totalDist, Math.min(totalDist, refineS + 1.5));
+  const fwdBearing = calculateBearing(posA.lat, posA.lon, posB.lat, posB.lon);
+  const bergBearing = calculateBearing(posA.lat, posA.lon, bLat, bLon);
+  let relAngle = (bergBearing - fwdBearing + 360) % 360;
+  if (relAngle > 180) relAngle -= 360;
+
+  // If iceberg is to Starboard (relAngle >= 0), steer Port (-1)
+  // If iceberg is to Port (relAngle < 0), steer Starboard (+1)
+  const steerSign = relAngle >= 0 ? -1 : 1;
+  const steerDirection = steerSign === 1 ? "STARBOARD" : "PORT";
+
+  const width = Number(berg.width_m) || 1200;
+  const length = Number(berg.length_m) || 2000;
+  const hazardRadiusKm = Math.max(10, (width + length) / 400 + 8);
+  const isOnRoute = minD <= hazardRadiusKm;
+
+  return {
+    bergId: berg.iceberg_id || berg.id || "ICEBERG",
+    bLat,
+    bLon,
+    s_cpa: refineS,
+    cpa_dist_km: minD,
+    steerSign,
+    steerDirection,
+    hazardRadiusKm,
+    isOnRoute,
+  };
+}
+
+// Computes smooth C^2 along-track deterrence curve across a wide transition window
+function getSmoothRouteDeterrence(s, cpaList) {
+  let totalOffsetKm = 0;
+  let maxOffsetKm = 0;
+  let activeTarget = null;
+  let activeDirection = "STARBOARD";
+
+  // Wide, gradual transition window: 24 km before and after obstacle (~48 km total transition)
+  const L_trans = 24.0;
+
+  cpaList.forEach((cpa) => {
+    if (!cpa.isOnRoute) return;
+    const deltaS = s - cpa.s_cpa;
+    if (Math.abs(deltaS) < L_trans) {
+      // C^2 Smoothstep bell taper: 0 at boundary with 0 derivative and 0 curvature
+      const u = Math.abs(deltaS) / L_trans; // 0 at CPA, 1 at boundary
+      const taper = Math.cos((Math.PI * u) / 2) ** 2;
+
+      // 3.2 km gentle clearance deflection
+      const ampKm = 3.2;
+      const offset = cpa.steerSign * ampKm * taper;
+      totalOffsetKm += offset;
+
+      const absOffset = Math.abs(offset);
+      if (absOffset > maxOffsetKm) {
+        maxOffsetKm = absOffset;
+        activeTarget = cpa.bergId;
+        activeDirection = cpa.steerDirection;
+      }
+    }
+  });
+
+  return {
+    signedOffsetKm: totalOffsetKm,
+    absOffsetKm: maxOffsetKm,
+    isDeterring: maxOffsetKm >= 0.15,
+    deterTarget: activeTarget,
+    deterDirection: activeDirection,
+  };
+}
+
+// Evaluates the continuous, smoothly deterred coordinates at along-track distance s
+function getDeterredPosAtDistance(points, segDistances, totalDist, cpaList, s) {
+  const nomPos = getNominalPosAtDistance(points, segDistances, totalDist, s);
+  if (!nomPos) return null;
+
+  const det = getSmoothRouteDeterrence(s, cpaList);
+  if (!det.isDeterring || Math.abs(det.signedOffsetKm) < 0.0001) {
+    return {
+      lat: nomPos.lat,
+      lon: nomPos.lon,
+      segIndex: nomPos.segIndex,
+      isDeterring: false,
+      deterOffsetKm: 0,
+      deterDirection: det.deterDirection,
+      deterTarget: null,
+    };
+  }
+
+  // Compute smooth local track heading using a 3km preview window around s
+  const s0 = Math.max(0, s - 1.5);
+  const s1 = Math.min(totalDist, s + 1.5);
+  const p0 = getNominalPosAtDistance(points, segDistances, totalDist, s0);
+  const p1 = getNominalPosAtDistance(points, segDistances, totalDist, s1);
+  const trackHeading = calculateBearing(p0.lat, p0.lon, p1.lat, p1.lon);
+
+  // Normal vector pointing Starboard (90 deg clockwise)
+  const rad = Cesium.Math.toRadians(trackHeading);
+  const stbdX = Math.cos(rad);  // East component
+  const stbdY = -Math.sin(rad); // North component
+
+  const midLat = Cesium.Math.toRadians(nomPos.lat);
+  const kx = 111.32 * Math.cos(midLat);
+  const ky = 110.57;
+
+  // Signed deflection: positive = starboard, negative = port
+  const dispX = det.signedOffsetKm * stbdX;
+  const dispY = det.signedOffsetKm * stbdY;
+
+  return {
+    lat: nomPos.lat + dispY / ky,
+    lon: nomPos.lon + dispX / kx,
+    segIndex: nomPos.segIndex,
+    isDeterring: det.isDeterring,
+    deterOffsetKm: det.absOffsetKm,
+    deterDirection: det.deterDirection,
+    deterTarget: det.deterTarget,
+  };
+}
+
+// Master function returning the smooth vessel & route progress state
+function getRouteProgressState(points, progress, icebergs = []) {
+  if (!points || points.length === 0) return null;
+  const { segDistances, totalDist } = getRouteDistances(points);
+  const s = Math.max(0, Math.min(1.0, progress)) * totalDist;
+
+  // Build CPAs for all icebergs
+  const cpaList = (icebergs || []).map((berg) =>
+    findIcebergCPAOnRoute(berg, points, segDistances, totalDist)
+  ).filter(Boolean);
+
+  const curPos = getDeterredPosAtDistance(points, segDistances, totalDist, cpaList, s);
+  if (!curPos) return null;
+
+  // Look ahead along the continuous deterred curve by 1.8 km to compute true smooth tangent heading
+  const lookAheadS = Math.min(totalDist, s + 1.8);
+  const lookAheadPos = getDeterredPosAtDistance(points, segDistances, totalDist, cpaList, lookAheadS);
+
+  let heading = 0;
+  if (lookAheadPos && (lookAheadPos.lat !== curPos.lat || lookAheadPos.lon !== curPos.lon)) {
+    heading = calculateBearing(curPos.lat, curPos.lon, lookAheadPos.lat, lookAheadPos.lon);
+  } else {
+    const prevS = Math.max(0, s - 1.8);
+    const prevPos = getDeterredPosAtDistance(points, segDistances, totalDist, cpaList, prevS);
+    if (prevPos) {
+      heading = calculateBearing(prevPos.lat, prevPos.lon, curPos.lat, curPos.lon);
+    }
+  }
+
+  return {
+    lat: curPos.lat,
+    lon: curPos.lon,
+    heading,
+    currentSegmentIndex: curPos.segIndex,
+    totalSegments: Math.max(1, points.length - 1),
+    remainingDistKm: Math.max(0, totalDist - s),
+    isDeterring: curPos.isDeterring,
+    deterOffsetKm: curPos.deterOffsetKm,
+    deterDirection: curPos.deterDirection,
+    deterTarget: curPos.deterTarget,
+  };
+}
+
+function pointToSegmentDistanceKm(pLat, pLon, aLat, aLon, bLat, bLon) {
+  const dAB = haversineKm(aLat, aLon, bLat, bLon);
+  if (dAB < 0.001) return haversineKm(pLat, pLon, aLat, aLon);
+
+  const midLat = Cesium.Math.toRadians((aLat + bLat) / 2);
+  const kx = 111.32 * Math.cos(midLat);
+  const ky = 110.57;
+
+  const ax = aLon * kx;
+  const ay = aLat * ky;
+  const bx = bLon * kx;
+  const by = bLat * ky;
+  const px = pLon * kx;
+  const py = pLat * ky;
+
+  const dx = bx - ax;
+  const dy = by - ay;
+  const segLenSq = dx * dx + dy * dy;
+  if (segLenSq < 1e-6) return Math.hypot(px - ax, py - ay);
+
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / segLenSq));
+  const projX = ax + t * dx;
+  const projY = ay + t * dy;
+  return Math.hypot(px - projX, py - projY);
+}
+
+function minDistanceToRouteKm(lat, lon, points) {
+  if (!points || points.length === 0) return Infinity;
+  let minD = Infinity;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i];
+    const p1 = points[i + 1];
+    const lat0 = Number(p0.latitude ?? p0.lat);
+    const lon0 = Number(p0.longitude ?? p0.lon);
+    const lat1 = Number(p1.latitude ?? p1.lat);
+    const lon1 = Number(p1.longitude ?? p1.lon);
+    if (!Number.isFinite(lat0) || !Number.isFinite(lon0) || !Number.isFinite(lat1) || !Number.isFinite(lon1)) continue;
+    const d = pointToSegmentDistanceKm(lat, lon, lat0, lon0, lat1, lon1);
+    if (d < minD) minD = d;
+  }
+  return minD;
 }
 
 function getIcebergPosition(berg) {
@@ -215,8 +458,20 @@ function App() {
   const [closestIcebergId, setClosestIcebergId] = useState(null);
   const [routeStatus, setRouteStatus] = useState("DIRECT ROUTE");
   
+  // 2-Day Early Warning Alert & Route Hazard States
+  const [activeAlertIceberg, setActiveAlertIceberg] = useState(null);
+  const [alertETA, setAlertETA] = useState(null);
+  const [routeHazardIcebergs, setRouteHazardIcebergs] = useState([]);
+
+  // Tactical Collision Avoidance & Course Deterrence State
+  const [isDeterring, setIsDeterring] = useState(false);
+  const [deterOffsetKm, setDeterOffsetKm] = useState(0);
+  const [deterDirection, setDeterDirection] = useState("STARBOARD");
+  const [deterTarget, setDeterTarget] = useState(null);
+
   // Active Navigation & Voyage Transit Simulation State
   const [activeRoute, setActiveRoute] = useState(DEFAULT_FAIRWAY_ROUTE);
+  const activeRouteRef = useRef(DEFAULT_FAIRWAY_ROUTE);
   const [isVoyaging, setIsVoyaging] = useState(true);
   const isVoyagingRef = useRef(true);
   const [voyageProgress, setVoyageProgress] = useState(0.33);
@@ -228,6 +483,10 @@ function App() {
   useEffect(() => {
     isVoyagingRef.current = isVoyaging;
   }, [isVoyaging]);
+
+  useEffect(() => {
+    activeRouteRef.current = activeRoute;
+  }, [activeRoute]);
 
   // 3D Visual Studio State
   const [activePreset, setActivePreset] = useState("antarctica");
@@ -361,55 +620,34 @@ function App() {
 
     setActivePreset(preset);
 
-    const shipLat = Number(ship?.lat ?? -62.50);
-    const shipLon = Number(ship?.lon ?? -60.50);
+    const shipLat = Number(ship?.lat ?? ship?.latitude ?? -62.83);
+    const shipLon = Number(ship?.lon ?? ship?.longitude ?? -60.50);
+    const shipHeading = Number(ship?.heading ?? ship?.heading_deg ?? ship?.heading_degrees ?? 90);
 
     if (preset === "ship") {
-      // Elevated 3D Third-Person Tactical View (Overlooking vessel and fairway)
+      setFollowShipCamera(true);
+
+      const headingDeg = shipHeading;
+      const headingRad = Cesium.Math.toRadians(headingDeg - 180);
+      const dist = 920; // 920m behind vessel stern for high-impact cinematic third-person view
+      const alt = 360;  // 360m elevation above sea level
+      const metersPerDegLat = 111320;
+      const metersPerDegLon = 111320 * Math.cos(Cesium.Math.toRadians(shipLat));
+
+      const camLat = shipLat + (-Math.cos(headingRad) * dist) / metersPerDegLat;
+      const camLon = shipLon + (-Math.sin(headingRad) * dist) / metersPerDegLon;
+
       viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(shipLon + 0.035, shipLat - 0.045, 4800),
+        destination: Cesium.Cartesian3.fromDegrees(camLon, camLat, alt),
         orientation: {
-          heading: Cesium.Math.toRadians(325),
-          pitch: Cesium.Math.toRadians(-42),
+          heading: Cesium.Math.toRadians(headingDeg),
+          pitch: Cesium.Math.toRadians(-21),
           roll: 0.0,
         },
-        duration: 1.4,
-      });
-    } else if (preset === "route") {
-      // 30km Tactical Navigation Corridor (Ship, Route line, Waypoints & Hazards)
-      viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(shipLon + 0.08, shipLat - 0.07, 14500),
-        orientation: {
-          heading: Cesium.Math.toRadians(325),
-          pitch: Cesium.Math.toRadians(-36),
-          roll: 0.0,
-        },
-        duration: 1.6,
-      });
-    } else if (preset === "iceberg") {
-      // Zoomed in on A23-A Tabular Iceberg hazard with 3D elevation & draft
-      const demo = allIcebergsRef.current[0] || { lat: -62.70, lon: -59.80 };
-      viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(demo.lon + 0.035, demo.lat - 0.028, 1800),
-        orientation: {
-          heading: Cesium.Math.toRadians(330),
-          pitch: Cesium.Math.toRadians(-28),
-          roll: 0.0,
-        },
-        duration: 1.5,
-      });
-    } else if (preset === "relief") {
-      // Antarctic Peninsula 3D Mountain Coast (Shows 3D relief texture around ship sector)
-      viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(shipLon + 0.45, shipLat - 0.35, 75000),
-        orientation: {
-          heading: Cesium.Math.toRadians(320),
-          pitch: Cesium.Math.toRadians(-38),
-          roll: 0.0,
-        },
-        duration: 1.8,
+        duration: 1.2,
       });
     } else if (preset === "antarctica") {
+      setFollowShipCamera(false);
       // Photorealistic 3D perspective looking across Antarctica (Reference Image view)
       viewer.camera.flyTo({
         destination: Cesium.Cartesian3.fromDegrees(-50.0, -82.0, 3600000),
@@ -418,9 +656,10 @@ function App() {
           pitch: Cesium.Math.toRadians(-46),
           roll: 0.0,
         },
-        duration: 2.0,
+        duration: 1.8,
       });
     } else if (preset === "earth") {
+      setFollowShipCamera(false);
       // Realistic Whole Earth in Space looking toward Antarctica
       viewer.camera.flyTo({
         destination: Cesium.Cartesian3.fromDegrees(shipLon, -45.0, 11500000),
@@ -429,7 +668,7 @@ function App() {
           pitch: Cesium.Math.toRadians(-70),
           roll: 0,
         },
-        duration: 2.2,
+        duration: 2.0,
       });
     }
   }, [ship]);
@@ -644,8 +883,8 @@ function App() {
     }
   }, [create3DShip, localOffset]);
 
-  // Render 3D Iceberg Models
-  const render3DIcebergs = useCallback((viewer, icebergs, xray) => {
+  // Render 3D Iceberg Models & White Dot Route Hazard Markers
+  const render3DIcebergs = useCallback((viewer, icebergs, xray, currentRoute) => {
     if (!viewer || !Array.isArray(icebergs)) return;
 
     // Clear old iceberg primitives & labels
@@ -653,6 +892,8 @@ function App() {
     icebergPrimitiveRef.current = [];
     icebergLabelRef.current.forEach((entity) => viewer.entities.remove(entity));
     icebergLabelRef.current = [];
+
+    const routePts = currentRoute?.points || activeRouteRef.current?.points || DEFAULT_FAIRWAY_ROUTE.points;
 
     icebergs.forEach((berg) => {
       const pos = getIcebergPosition(berg);
@@ -663,6 +904,11 @@ function App() {
       const length = Number(berg.length_m) || 2000;
       const freeboard = Number(berg.freeboard_m) || 45;
       const draft = Number(berg.estimated_draft_m) || (freeboard * 6);
+
+      // Check if iceberg hazard zone intersects the navigation route
+      const distToRoute = minDistanceToRouteKm(lat, lon, routePts);
+      const hazardRadiusKm = Math.max(10, (width + length) / 400 + 8);
+      const isOnRouteHazard = distToRoute <= hazardRadiusKm;
 
       // Create irregular polygonal ring for realistic tabular/pinnacled iceberg shape
       const numPoints = 12;
@@ -706,21 +952,57 @@ function App() {
         icebergLabelRef.current.push(underwaterBerg);
       }
 
+      // If iceberg hazard zone encompasses the route, render distinct WHITE DOT Hazard Marker
+      if (isOnRouteHazard) {
+        // 1. High-Visibility White Dot Point Marker
+        const whiteDot = viewer.entities.add({
+          name: `${bergId} Route Hazard White Dot`,
+          position: Cesium.Cartesian3.fromDegrees(lon, lat, freeboard + 25),
+          point: {
+            pixelSize: 13,
+            color: Cesium.Color.WHITE,
+            outlineColor: Cesium.Color.fromCssColorString("#00e5ff"),
+            outlineWidth: 3,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+        });
+
+        // 2. Luminous White Hazard Zone Buffer Ring
+        const whiteHazardRing = viewer.entities.add({
+          name: `${bergId} Hazard Zone Buffer Ring`,
+          position: Cesium.Cartesian3.fromDegrees(lon, lat, 4),
+          ellipse: {
+            semiMajorAxis: hazardRadiusKm * 1000,
+            semiMinorAxis: hazardRadiusKm * 1000,
+            material: Cesium.Color.WHITE.withAlpha(0.12),
+            outline: true,
+            outlineColor: Cesium.Color.WHITE.withAlpha(0.85),
+            outlineWidth: 2,
+          },
+        });
+
+        icebergLabelRef.current.push(whiteDot, whiteHazardRing);
+      }
+
       // Iceberg Label & Telemetry Badge
       const label = viewer.entities.add({
         name: `${bergId} Label`,
-        position: Cesium.Cartesian3.fromDegrees(lon, lat, freeboard + 90),
+        position: Cesium.Cartesian3.fromDegrees(lon, lat, freeboard + 95),
         label: {
-          text: `🧊 ${bergId}\nFREEBOARD: ${freeboard}m | DRAFT: ${draft}m`,
+          text: isOnRouteHazard 
+            ? `⚪ ${bergId} (ROUTE HAZARD)\nFREEBOARD: ${freeboard}m | DRAFT: ${draft}m`
+            : `🧊 ${bergId}\nFREEBOARD: ${freeboard}m | DRAFT: ${draft}m`,
           font: "bold 11px 'JetBrains Mono', sans-serif",
-          fillColor: Cesium.Color.WHITE,
+          fillColor: isOnRouteHazard ? Cesium.Color.WHITE : Cesium.Color.fromCssColorString("#e0f7fa"),
           outlineColor: Cesium.Color.BLACK,
           outlineWidth: 3,
           style: Cesium.LabelStyle.FILL_AND_OUTLINE,
           verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
           horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
           showBackground: true,
-          backgroundColor: Cesium.Color.fromCssColorString("#030e20").withAlpha(0.85),
+          backgroundColor: isOnRouteHazard
+            ? Cesium.Color.fromCssColorString("#b71c1c").withAlpha(0.92)
+            : Cesium.Color.fromCssColorString("#030e20").withAlpha(0.85),
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
       });
@@ -729,29 +1011,43 @@ function App() {
     });
   }, [offsetLatLon]);
 
-  // Render Planned Route & Danger Corridors
-  const renderRoutes = useCallback((viewer) => {
+  // Render Planned Route & Danger Corridors (with smooth Iceberg Deterrence Fairway)
+  const renderRoutes = useCallback((viewer, icebergs) => {
     if (!viewer) return;
     routeEntitiesRef.current.forEach((e) => viewer.entities.remove(e));
     routeEntitiesRef.current = [];
 
     const waypoints = [
-      { lon: -62.00, lat: -62.10 }, // Drake Passage Deep Open Ocean
-      { lon: -61.20, lat: -62.30 }, // South Shetland Outer Channel
-      { lon: -60.50, lat: -62.44 }, // Drake Passage Deep Blue Ocean Water (North of Livingston)
-      { lon: -60.06, lat: -62.48 }, // English Strait Approach
-      { lon: -59.86, lat: -62.68 }, // Natural Marine Channel Passage
-      { lon: -59.50, lat: -62.80 }, // Bransfield Strait Deep Sea
-      { lon: -58.20, lat: -62.88 }  // Antarctic Sound Approach (Open Water)
+      { lon: -62.00, lat: -62.90 }, // WP-1: Bransfield Deep Ocean Southwest
+      { lon: -61.20, lat: -62.86 }, // WP-2: Bransfield Central Channel
+      { lon: -60.50, lat: -62.83 }, // WP-3: North of Deception Island / Deep Fairway
+      { lon: -60.00, lat: -62.77 }, // WP-4: Bransfield Open Fairway South of Hurd
+      { lon: -59.78, lat: -62.72 }, // WP-5: Open Water Fairway Approach to ICB-2026-A23A
+      { lon: -59.35, lat: -62.78 }, // WP-6: Deep Ocean Fairway South of Robert Island
+      { lon: -58.20, lat: -62.88 }  // WP-7: Antarctic Sound Deep Water Approach
     ];
 
+    const wpPoints = waypoints.map((w) => ({ latitude: w.lat, longitude: w.lon }));
+    const icebergsToUse = icebergs || allIcebergsRef.current || FALLBACK_ICEBERGS;
+
+    // Sample finely along route so the fairway dynamically bends around on-route icebergs with silky-smooth continuity
+    const sampledPositions = [];
+    const numSamples = 200;
+    for (let s = 0; s <= numSamples; s++) {
+      const prog = s / numSamples;
+      const pState = getRouteProgressState(wpPoints, prog, icebergsToUse);
+      if (pState) {
+        sampledPositions.push(Cesium.Cartesian3.fromDegrees(pState.lon, pState.lat, 10));
+      }
+    }
+
     const polyline = viewer.entities.add({
-      name: "Optimal Antarctic Navigation Corridor",
+      name: "Optimal Antarctic Navigation Corridor (Tactical Avoidance Fairway)",
       polyline: {
-        positions: Cesium.Cartesian3.fromDegreesArray(waypoints.flatMap(w => [w.lon, w.lat])),
-        width: 4,
+        positions: sampledPositions,
+        width: 5,
         material: new Cesium.PolylineGlowMaterialProperty({
-          glowPower: 0.25,
+          glowPower: 0.3,
           color: Cesium.Color.fromCssColorString("#69f0ae"),
         }),
         clampToGround: true,
@@ -807,33 +1103,112 @@ function App() {
       update3DShip(viewer, formattedShip);
     }
 
-    const calculated = allIcebergsRef.current
+    // Calculate Logical Proximity Alert & Approaching Hazard Intercepts
+    const currentSpeedKnots = formattedShip.speed_knots || 13.5;
+    const speedKmh = Math.max(5, currentSpeedKnots * 1.852);
+    const routePts = activeRouteRef.current?.points || DEFAULT_FAIRWAY_ROUTE.points;
+    const { segDistances, totalDist } = getRouteDistances(routePts);
+
+    // Current vessel along-track distance
+    const sShip = Math.max(0, Math.min(1.0, voyageProgressRef.current || 0)) * totalDist;
+
+    // Evaluate all icebergs with true along-track CPA and approach geometry
+    const evaluated = allIcebergsRef.current
       .map((berg) => {
         const position = getIcebergPosition(berg);
         if (!position) return null;
-        const d = haversineKm(lat, lon, position.lat, position.lon);
-        return { ...berg, id: berg.iceberg_id ?? berg.id, _distanceKm: d };
+        const { lat: bLat, lon: bLon } = position;
+        const dDirectKm = haversineKm(lat, lon, bLat, bLon);
+        const cpa = findIcebergCPAOnRoute(berg, routePts, segDistances, totalDist);
+        if (!cpa) return null;
+
+        // Along-track delta (positive = ahead, negative = passed)
+        const deltaS = cpa.s_cpa - sShip;
+        const hasPassed = deltaS < -2.0;
+        const isApproachingAhead = deltaS >= -2.0;
+
+        // True distance ahead to the obstacle along track or direct
+        const distAheadKm = Math.max(0.2, isApproachingAhead ? (deltaS > 0 ? deltaS : dDirectKm) : dDirectKm);
+        const etaHours = distAheadKm / speedKmh;
+        const totalMinutes = Math.max(1, Math.round(etaHours * 60));
+        const hrs = Math.floor(totalMinutes / 60);
+        const mins = totalMinutes % 60;
+        const formattedETA = hrs > 0 ? `${hrs}h ${mins}m` : `${mins} min`;
+
+        // Proximity threat criteria:
+        // 1. Iceberg is on the route fairway corridor (cpa.isOnRoute)
+        // 2. Iceberg is AHEAD of vessel (has not been passed)
+        // 3. Iceberg is NEARBY within active threat detection horizon (<= 22.0 km, ~50 min)
+        const isNearbyAhead = cpa.isOnRoute && isApproachingAhead && distAheadKm <= 22.0;
+
+        return {
+          ...berg,
+          id: berg.iceberg_id ?? berg.id,
+          _distanceKm: dDirectKm,
+          _distAheadKm: distAheadKm,
+          _s_cpa: cpa.s_cpa,
+          _deltaS: deltaS,
+          _hasPassed: hasPassed,
+          _isOnRoute: cpa.isOnRoute,
+          _isNearbyAhead: isNearbyAhead,
+          _etaHours: etaHours,
+          _totalMinutes: totalMinutes,
+          _formattedETA: formattedETA,
+          _hazardRadiusKm: cpa.hazardRadiusKm,
+        };
       })
-      .filter(Boolean)
-      .filter((berg) => berg._distanceKm <= NEARBY_RADIUS_KM)
-      .sort((a, b) => a._distanceKm - b._distanceKm);
+      .filter(Boolean);
 
-    setNearbyIcebergs(calculated);
-    const closest = calculated[0];
-    setClosestIcebergId(closest?.id ?? null);
+    const onRouteList = evaluated.filter((b) => b._isOnRoute);
+    setRouteHazardIcebergs(onRouteList);
 
-    if (closest) {
-      const distance = closest._distanceKm;
-      setDistanceKm(distance);
-      if (distance <= REVEAL_TRIGGER_KM) {
-        setRouteStatus("WARNING AREA ACTIVE");
+    // Upcoming threats strictly AHEAD and NEARBY (within 22 km)
+    const nearbyThreats = evaluated
+      .filter((b) => b._isNearbyAhead)
+      .sort((a, b) => a._distAheadKm - b._distAheadKm);
+
+    // Primary active threat ONLY exists if an iceberg is actually NEARBY AHEAD
+    const activeThreat = nearbyThreats[0] || null;
+    setActiveAlertIceberg(activeThreat);
+
+    // Upcoming icebergs ahead on route (at any distance, for status display)
+    const upcomingAhead = evaluated
+      .filter((b) => b._isOnRoute && !b._hasPassed)
+      .sort((a, b) => a._distAheadKm - b._distAheadKm);
+
+    if (activeThreat) {
+      setAlertETA({
+        hours: activeThreat._etaHours,
+        totalMinutes: activeThreat._totalMinutes,
+        formattedETA: activeThreat._formattedETA,
+        distanceKm: activeThreat._distAheadKm,
+      });
+      setClosestIcebergId(activeThreat.id);
+      setDistanceKm(activeThreat._distAheadKm);
+
+      const isDet = formattedShip.isDeterring;
+      const detOff = formattedShip.deterOffsetKm || 3.2;
+      const detDir = formattedShip.deterDirection || "STARBOARD";
+      if (isDet) {
+        setRouteStatus(`⚠️ AVOIDANCE ACTIVE: DETERRING +${detOff.toFixed(1)}km ${detDir} FROM ${activeThreat.id} (ETA ${activeThreat._formattedETA})`);
       } else {
-        setRouteStatus("DIRECT ROUTE");
+        setRouteStatus(`⚠️ WARNING: ${activeThreat.id} AHEAD IN ${activeThreat._formattedETA} (${activeThreat._distAheadKm.toFixed(1)}km)`);
       }
     } else {
-      setDistanceKm(Infinity);
-      setRouteStatus("NO ACTIVE ICEBERG HAZARD");
+      setAlertETA(null);
+      const nextUpcoming = upcomingAhead[0];
+      if (nextUpcoming) {
+        setClosestIcebergId(nextUpcoming.id);
+        setDistanceKm(nextUpcoming._distAheadKm);
+        setRouteStatus(`CORRIDOR CLEAR (NEXT ICEBERG ${nextUpcoming.id} IN ${nextUpcoming._distAheadKm.toFixed(1)} KM)`);
+      } else {
+        setClosestIcebergId(null);
+        setDistanceKm(Infinity);
+        setRouteStatus("CORRIDOR CLEAR (ALL HAZARDS CLEARED)");
+      }
     }
+
+    setNearbyIcebergs(evaluated.sort((a, b) => a._distanceKm - b._distanceKm));
   }, [update3DShip]);
 
   // Render Custom Calculated Fuel-Efficient Route & Standard Comparison
@@ -848,14 +1223,22 @@ function App() {
     const feRoute = routeData.fuel_efficient_route;
     const stdRoute = routeData.standard_route;
 
-    // 1. Render Fuel-Efficient Route (Glowing Neon Green Line)
+    // 1. Render Fuel-Efficient Route (Glowing Neon Green Line with Deterrence Fairway)
     if (feRoute && Array.isArray(feRoute.points) && feRoute.points.length > 0) {
-      const positions = feRoute.points.map((p) => Cesium.Cartesian3.fromDegrees(p.longitude, p.latitude, 10));
+      const sampledPositions = [];
+      const numSamples = 200;
+      for (let s = 0; s <= numSamples; s++) {
+        const prog = s / numSamples;
+        const pState = getRouteProgressState(feRoute.points, prog, allIcebergsRef.current);
+        if (pState) {
+          sampledPositions.push(Cesium.Cartesian3.fromDegrees(pState.lon, pState.lat, 10));
+        }
+      }
 
       const fePolyline = viewer.entities.add({
-        name: `Fuel-Efficient Route (${feRoute.distance_km} km)`,
+        name: `Fuel-Efficient Route (${feRoute.distance_km} km) with Iceberg Avoidance`,
         polyline: {
-          positions,
+          positions: sampledPositions,
           width: 5,
           material: new Cesium.PolylineGlowMaterialProperty({
             glowPower: 0.35,
@@ -907,10 +1290,16 @@ function App() {
         lat: startPt.latitude,
         lon: startPt.longitude,
         heading: initialHeading,
-        speed_knots: 12.5
+        speed_knots: 12.5,
+        isDeterring: false,
+        deterOffsetKm: 0,
+        deterDirection: "STARBOARD",
       });
       setVoyageLeg("WP-0 → WP-1");
       setRemainingDistKm(feRoute.distance_km || 100);
+
+      // Refresh 3D icebergs and white dot hazard markers for the newly calculated route
+      render3DIcebergs(viewer, allIcebergsRef.current, xrayMode, feRoute);
     }
 
     // 2. Render Standard Direct Route (Dashed / Thin Cyan Line for visual comparison)
@@ -951,29 +1340,40 @@ function App() {
     }
 
     setRouteStatus(`OPTIMAL ROUTE (${routeData.fuel_saved_percent ?? 18.7}% FUEL SAVED)`);
-  }, [updateShip]);
+  }, [updateShip, xrayMode, render3DIcebergs]);
 
-  // Voyage Control Actions
+  // Voyage Transit Animation Loop
+  const voyageProgressRef = useRef(0.33);
+
   const handleStartVoyage = useCallback((route) => {
     const routeToUse = route || activeRoute;
     if (!routeToUse || !routeToUse.points || routeToUse.points.length < 2) return;
 
     setActiveRoute(routeToUse);
-    setVoyageProgress((prev) => (prev >= 0.999 ? 0 : prev));
+    if (voyageProgressRef.current >= 0.999) voyageProgressRef.current = 0;
+    setVoyageProgress(voyageProgressRef.current);
     setIsVoyaging(true);
 
-    if (voyageProgress <= 0.001 || voyageProgress >= 0.999) {
-      const startState = getRouteProgressState(routeToUse.points, 0);
-      if (startState) {
-        updateShip({
-          lat: startState.lat,
-          lon: startState.lon,
-          heading: startState.heading,
-          speed_knots: 13.5,
-        });
-      }
+    const startState = getRouteProgressState(routeToUse.points, voyageProgressRef.current, allIcebergsRef.current);
+    if (startState && viewerRef.current) {
+      const pos = {
+        lat: startState.lat,
+        lon: startState.lon,
+        heading: startState.heading,
+        speed_knots: 13.5,
+        isDeterring: startState.isDeterring,
+        deterOffsetKm: startState.deterOffsetKm,
+        deterDirection: startState.deterDirection,
+        deterTarget: startState.deterTarget,
+      };
+      update3DShip(viewerRef.current, pos);
+      updateShip(pos);
+      setIsDeterring(startState.isDeterring);
+      setDeterOffsetKm(startState.deterOffsetKm);
+      setDeterDirection(startState.deterDirection);
+      setDeterTarget(startState.deterTarget);
     }
-  }, [activeRoute, voyageProgress, updateShip]);
+  }, [activeRoute, updateShip, update3DShip]);
 
   const handlePauseVoyage = useCallback(() => {
     setIsVoyaging(false);
@@ -981,38 +1381,60 @@ function App() {
 
   const handleResetVoyage = useCallback(() => {
     setIsVoyaging(false);
+    voyageProgressRef.current = 0;
     setVoyageProgress(0);
     if (activeRoute && activeRoute.points && activeRoute.points.length > 0) {
-      const startState = getRouteProgressState(activeRoute.points, 0);
-      if (startState) {
-        updateShip({
+      const startState = getRouteProgressState(activeRoute.points, 0, allIcebergsRef.current);
+      if (startState && viewerRef.current) {
+        const pos = {
           lat: startState.lat,
           lon: startState.lon,
           heading: startState.heading,
           speed_knots: 0.0,
-        });
+          isDeterring: startState.isDeterring,
+          deterOffsetKm: startState.deterOffsetKm,
+          deterDirection: startState.deterDirection,
+          deterTarget: startState.deterTarget,
+        };
+        update3DShip(viewerRef.current, pos);
+        updateShip(pos);
+        setIsDeterring(startState.isDeterring);
+        setDeterOffsetKm(startState.deterOffsetKm);
+        setDeterDirection(startState.deterDirection);
+        setDeterTarget(startState.deterTarget);
         setVoyageLeg("WP-0 → WP-1");
         setRemainingDistKm(activeRoute.distance_km || 100);
       }
     }
-  }, [activeRoute, updateShip]);
+  }, [activeRoute, updateShip, update3DShip]);
 
   const handleProgressScrub = useCallback((newProgress) => {
+    voyageProgressRef.current = newProgress;
     setVoyageProgress(newProgress);
     if (activeRoute && activeRoute.points && activeRoute.points.length > 0) {
-      const state = getRouteProgressState(activeRoute.points, newProgress);
-      if (state) {
-        updateShip({
+      const state = getRouteProgressState(activeRoute.points, newProgress, allIcebergsRef.current);
+      if (state && viewerRef.current) {
+        const pos = {
           lat: state.lat,
           lon: state.lon,
           heading: state.heading,
           speed_knots: isVoyaging ? 14.5 : 0.0,
-        });
+          isDeterring: state.isDeterring,
+          deterOffsetKm: state.deterOffsetKm,
+          deterDirection: state.deterDirection,
+          deterTarget: state.deterTarget,
+        };
+        update3DShip(viewerRef.current, pos);
+        updateShip(pos);
+        setIsDeterring(state.isDeterring);
+        setDeterOffsetKm(state.deterOffsetKm);
+        setDeterDirection(state.deterDirection);
+        setDeterTarget(state.deterTarget);
         setVoyageLeg(`WP-${state.currentSegmentIndex} → WP-${state.currentSegmentIndex + 1}`);
         setRemainingDistKm(state.remainingDistKm);
       }
     }
-  }, [activeRoute, isVoyaging, updateShip]);
+  }, [activeRoute, isVoyaging, updateShip, update3DShip]);
 
   const handleSetVoyageSpeed = useCallback((multiplier) => {
     setVoyageSpeed(multiplier);
@@ -1028,85 +1450,97 @@ function App() {
 
     let lastTime = performance.now();
     let animId;
+    let lastUiSync = 0;
     let lastBackendSync = 0;
 
     const tick = (now) => {
       const dt = (now - lastTime) / 1000;
       lastTime = now;
 
-      // Hackathon Presentation Pacing:
-      // A ~100 km transit takes ~90 seconds at 1x speed so judges can follow every leg
+      // Hackathon Presentation Pacing: ~90s transit
       const totalKm = activeRoute.distance_km || 100;
       const nominalTimeSec = Math.max(60, totalKm * 0.90);
       const progressDelta = (dt / nominalTimeSec) * voyageSpeed;
 
-      setVoyageProgress((prev) => {
-        let next = prev + progressDelta;
-        if (next >= 1.0) {
-          next = 0.0;
-        }
+      voyageProgressRef.current = (voyageProgressRef.current + progressDelta) % 1.0;
+      const curProg = voyageProgressRef.current;
 
-        const state = getRouteProgressState(activeRoute.points, next);
-        if (state) {
-          const speedKnots = Number((12.5 + Math.sin(next * 12) * 1.5).toFixed(1));
-          updateShip({
-            lat: state.lat,
-            lon: state.lon,
-            heading: state.heading,
-            speed_knots: speedKnots,
-          });
+      const state = getRouteProgressState(activeRoute.points, curProg, allIcebergsRef.current);
+      if (state && viewerRef.current) {
+        const speedKnots = Number((12.5 + Math.sin(curProg * 12) * 1.5).toFixed(1));
+        const currentShipPos = {
+          lat: state.lat,
+          lon: state.lon,
+          heading: state.heading,
+          speed_knots: speedKnots,
+          isDeterring: state.isDeterring,
+          deterOffsetKm: state.deterOffsetKm,
+          deterDirection: state.deterDirection,
+          deterTarget: state.deterTarget,
+        };
+
+        // Smooth GPU transform in Cesium (0 React overhead)
+        update3DShip(viewerRef.current, currentShipPos);
+
+        // Throttle React UI state updates to 4 times per second (250ms interval)
+        if (now - lastUiSync > 250) {
+          lastUiSync = now;
+          setVoyageProgress(curProg);
           setVoyageLeg(`WP-${state.currentSegmentIndex} → WP-${state.currentSegmentIndex + 1}`);
           setRemainingDistKm(state.remainingDistKm);
-
-          // Elevated 3rd-Person Tactical Camera Tracking
-          if (followShipCamera && viewerRef.current) {
-            const viewer = viewerRef.current;
-            const headingDeg = state.heading;
-            const headingRad = Cesium.Math.toRadians(headingDeg - 180);
-            const dist = 6500;  // 6.5 km pulled back in 3rd person
-            const alt = 4800;   // 4.8 km altitude overlooking the vessel
-            const metersPerDegLat = 111320;
-            const metersPerDegLon = 111320 * Math.cos(Cesium.Math.toRadians(state.lat));
-
-            const camLat = state.lat + (-Math.cos(headingRad) * dist) / metersPerDegLat;
-            const camLon = state.lon + (-Math.sin(headingRad) * dist) / metersPerDegLon;
-
-            viewer.camera.setView({
-              destination: Cesium.Cartesian3.fromDegrees(camLon, camLat, alt),
-              orientation: {
-                heading: Cesium.Math.toRadians(headingDeg),
-                pitch: Cesium.Math.toRadians(-42), // Elevated third-person angle
-                roll: 0.0,
-              },
-            });
-          }
-
-          // Sync position to backend every 3 seconds
-          if (now - lastBackendSync > 3000) {
-            lastBackendSync = now;
-            fetch(`${BACKEND}/ship/position`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                latitude: state.lat,
-                longitude: state.lon,
-                speed_knots: speedKnots,
-                heading_degrees: state.heading,
-                timestamp: new Date().toISOString()
-              })
-            }).catch(() => {});
-          }
+          setIsDeterring(state.isDeterring);
+          setDeterOffsetKm(state.deterOffsetKm);
+          setDeterDirection(state.deterDirection);
+          setDeterTarget(state.deterTarget);
+          updateShip(currentShipPos);
         }
 
-        return next;
-      });
+        // Elevated 3rd-Person Tactical Camera Tracking
+        if (followShipCamera) {
+          const viewer = viewerRef.current;
+          const headingDeg = state.heading;
+          const headingRad = Cesium.Math.toRadians(headingDeg - 180);
+          const dist = 920;
+          const alt = 360;
+          const metersPerDegLat = 111320;
+          const metersPerDegLon = 111320 * Math.cos(Cesium.Math.toRadians(state.lat));
+
+          const camLat = state.lat + (-Math.cos(headingRad) * dist) / metersPerDegLat;
+          const camLon = state.lon + (-Math.sin(headingRad) * dist) / metersPerDegLon;
+
+          viewer.camera.setView({
+            destination: Cesium.Cartesian3.fromDegrees(camLon, camLat, alt),
+            orientation: {
+              heading: Cesium.Math.toRadians(headingDeg),
+              pitch: Cesium.Math.toRadians(-21),
+              roll: 0.0,
+            },
+          });
+        }
+
+        // Sync position to backend every 4 seconds
+        if (now - lastBackendSync > 4000) {
+          lastBackendSync = now;
+          fetch(`${BACKEND}/ship/position`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              latitude: state.lat,
+              longitude: state.lon,
+              speed_knots: speedKnots,
+              heading_degrees: state.heading,
+              timestamp: new Date().toISOString()
+            })
+          }).catch(() => {});
+        }
+      }
 
       animId = requestAnimationFrame(tick);
     };
 
     animId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animId);
-  }, [isVoyaging, activeRoute, voyageSpeed, followShipCamera, updateShip]);
+  }, [isVoyaging, activeRoute, voyageSpeed, followShipCamera, updateShip, update3DShip]);
 
   // Load backend endpoints
   const loadBackendData = useCallback(async () => {
@@ -1119,6 +1553,7 @@ function App() {
           allIcebergsRef.current = array;
           if (viewerRef.current) {
             render3DIcebergs(viewerRef.current, array, xrayMode);
+            renderRoutes(viewerRef.current, array);
           }
         }
       }
@@ -1135,7 +1570,7 @@ function App() {
     } catch (e) {
       console.warn("Backend ship endpoint offline, using default ship position.");
     }
-  }, [render3DIcebergs, updateShip, xrayMode]);
+  }, [render3DIcebergs, renderRoutes, updateShip, xrayMode]);
 
   // Initialize Cesium Engine
   useEffect(() => {
@@ -1209,28 +1644,43 @@ function App() {
         const initialDate = new Date(Date.UTC(2026, 0, 15, 15, 0));
         viewer.clock.currentTime = Cesium.JulianDate.fromDate(initialDate);
 
-        // Initial Camera: Elevated Third-Person Tactical View overlooking vessel and open water fairway
+        // Initial Camera: Cinematic Third-Person Tactical View framed directly on vessel
+        const initHeading = 90;
+        const initHeadingRad = Cesium.Math.toRadians(initHeading - 180);
+        const initDist = 920;
+        const initAlt = 360;
+        const initLat = -62.83;
+        const initLon = -60.50;
+        const metersPerDegLat = 111320;
+        const metersPerDegLon = 111320 * Math.cos(Cesium.Math.toRadians(initLat));
+        const initCamLat = initLat + (-Math.cos(initHeadingRad) * initDist) / metersPerDegLat;
+        const initCamLon = initLon + (-Math.sin(initHeadingRad) * initDist) / metersPerDegLon;
+
         viewer.camera.setView({
-          destination: Cesium.Cartesian3.fromDegrees(-60.50 + 0.040, -62.44 - 0.055, 5200),
+          destination: Cesium.Cartesian3.fromDegrees(initCamLon, initCamLat, initAlt),
           orientation: {
-            heading: Cesium.Math.toRadians(325),
-            pitch: Cesium.Math.toRadians(-40),
+            heading: Cesium.Math.toRadians(initHeading),
+            pitch: Cesium.Math.toRadians(-21),
             roll: 0.0,
           },
         });
 
         // Initialize vessel directly on fairway route line (approaching WP-3 / WP-4)
-        const initialFairwayState = getRouteProgressState(DEFAULT_FAIRWAY_ROUTE.points, 0.33);
+        const initialFairwayState = getRouteProgressState(DEFAULT_FAIRWAY_ROUTE.points, 0.33, FALLBACK_ICEBERGS);
         if (initialFairwayState) {
           updateShip({
             lat: initialFairwayState.lat,
             lon: initialFairwayState.lon,
             heading: initialFairwayState.heading,
             speed_knots: 13.2,
+            isDeterring: initialFairwayState.isDeterring,
+            deterOffsetKm: initialFairwayState.deterOffsetKm,
+            deterDirection: initialFairwayState.deterDirection,
+            deterTarget: initialFairwayState.deterTarget,
           });
         }
         render3DIcebergs(viewer, FALLBACK_ICEBERGS, xrayMode);
-        renderRoutes(viewer);
+        renderRoutes(viewer, FALLBACK_ICEBERGS);
 
         await loadBackendData();
 
@@ -1336,30 +1786,9 @@ function App() {
         <button
           className={`preset-btn ${activePreset === "ship" ? "active" : ""}`}
           onClick={() => applyCameraPreset("ship")}
-          title="Close 3D focus on MV Vasiliy Golovnin"
+          title="Cinematic 3D Third-Person Focus on MV Vasiliy Golovnin"
         >
           🎯 Focus Ship
-        </button>
-        <button
-          className={`preset-btn ${activePreset === "route" ? "active" : ""}`}
-          onClick={() => applyCameraPreset("route")}
-          title="30km Tactical Navigation Corridor"
-        >
-          🗺️ Route Corridor
-        </button>
-        <button
-          className={`preset-btn ${activePreset === "iceberg" ? "active" : ""}`}
-          onClick={() => applyCameraPreset("iceberg")}
-          title="Close 3D focus on A23-A Tabular Iceberg"
-        >
-          🧊 Iceberg A23-A
-        </button>
-        <button
-          className={`preset-btn ${activePreset === "relief" ? "active" : ""}`}
-          onClick={() => applyCameraPreset("relief")}
-          title="3D Coast & Mountain Relief"
-        >
-          🏔️ 3D Coast Relief
         </button>
         <button
           className={`preset-btn ${activePreset === "antarctica" ? "active" : ""}`}
@@ -1376,6 +1805,34 @@ function App() {
           🌍 Global Earth
         </button>
       </div>
+
+      {/* Tactical Early Warning & Course Deterrence Overlay Banner */}
+      {activeAlertIceberg && alertETA && (
+        <div className="top-early-warning-banner glass pulse-warning-glow">
+          <div className="banner-pulse-icon">🚨</div>
+          <div className="banner-content">
+            <div className="banner-title-line">
+              <span className="banner-badge">⚠️ WARNING: ICEBERG NEARBY AHEAD</span>
+              <span className="banner-heading">
+                INTERCEPT IN {alertETA.formattedETA || `${Math.round(alertETA.hours * 60)} MIN`} ({alertETA.distanceKm.toFixed(1)} KM)
+              </span>
+            </div>
+            <div className="banner-detail-line">
+              <span>TARGET: <strong>{activeAlertIceberg.id}</strong> ({activeAlertIceberg.shape_class?.toUpperCase() || "TABULAR"})</span>
+              <span className="banner-sep">•</span>
+              {isDeterring ? (
+                <span className="banner-deterring-text">
+                  ⚡ <strong>COURSE DETERRENCE ACTIVE:</strong> VEERING +{deterOffsetKm.toFixed(1)} KM {deterDirection} TO DETOUR AROUND HAZARD
+                </span>
+              ) : (
+                <span className="banner-standby-text">
+                  🛡️ <strong>STATUS:</strong> TACTICAL AVOIDANCE VECTOR CALCULATED & ARMED
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick Navigation Floating Toolbar (Zoom +, Zoom -, Tilt 3D, Center Ship) */}
       <div className="quick-nav-toolbar glass">
@@ -1487,12 +1944,6 @@ function App() {
                 🔄 {isAutoOrbiting ? "Stop Orbit" : "Auto Orbit"}
               </button>
               <button
-                className={`toggle-pill ${xrayMode ? "active" : ""}`}
-                onClick={() => setXrayMode(!xrayMode)}
-              >
-                🩻 {xrayMode ? "X-Ray Active" : "Sonar X-Ray"}
-              </button>
-              <button
                 className={`toggle-pill ${enableShadows ? "active" : ""}`}
                 onClick={() => setEnableShadows(!enableShadows)}
               >
@@ -1527,6 +1978,13 @@ function App() {
         routeStatus={routeStatus}
         nearbyIcebergs={nearbyIcebergs}
         closestIcebergId={closestIcebergId}
+        activeAlertIceberg={activeAlertIceberg}
+        alertETA={alertETA}
+        routeHazardIcebergs={routeHazardIcebergs}
+        isDeterring={isDeterring}
+        deterOffsetKm={deterOffsetKm}
+        deterDirection={deterDirection}
+        deterTarget={deterTarget}
       />
 
       {/* Floating Active Voyage HUD (Bottom Center) */}
@@ -1540,6 +1998,11 @@ function App() {
         currentHeading={ship?.heading ?? 125}
         currentLeg={voyageLeg}
         remainingDistKm={remainingDistKm}
+        activeAlertIceberg={activeAlertIceberg}
+        alertETA={alertETA}
+        isDeterring={isDeterring}
+        deterOffsetKm={deterOffsetKm}
+        deterDirection={deterDirection}
         onTogglePlay={() => {
           if (isVoyaging) {
             handlePauseVoyage();

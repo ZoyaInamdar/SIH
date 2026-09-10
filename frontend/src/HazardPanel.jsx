@@ -9,8 +9,15 @@ function HazardPanel({
   gpsFix,
   distanceKm,
   routeStatus,
-  nearbyIcebergs,
+  nearbyIcebergs = [],
   closestIcebergId,
+  activeAlertIceberg = null,
+  alertETA = null,
+  routeHazardIcebergs = [],
+  isDeterring = false,
+  deterOffsetKm = 0,
+  deterDirection = "STARBOARD",
+  deterTarget = null,
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -40,11 +47,21 @@ function HazardPanel({
           <span className="pill-title">NAV TELEMETRY</span>
           <span className="pill-val">{validSpeed.toFixed(1)} kn</span>
           <span className="pill-val">{validHeading.toFixed(0)}°</span>
+          {activeAlertIceberg && (
+            <span className="alert-badge-red" style={{ marginLeft: 4 }}>
+              🚨 NEARBY ALERT
+            </span>
+          )}
           <span className="pill-expand">▼ Open</span>
         </div>
       </div>
     );
   }
+
+  // Combine active alert iceberg with gallery list without duplicates
+  const otherIcebergs = nearbyIcebergs.filter(
+    (b) => (b.id ?? b.iceberg_id) !== (activeAlertIceberg?.id ?? activeAlertIceberg?.iceberg_id)
+  );
 
   return (
     <div className="hazard-panel">
@@ -93,7 +110,7 @@ function HazardPanel({
       <div className="hazard-block">
         <div className="hazard-row">
           <span className="hazard-lbl">HAZARD DIST</span>
-          <span className={inWarningArea ? "distance-warning" : "distance-good"}>
+          <span className={activeAlertIceberg ? "distance-warning" : inWarningArea ? "distance-warning" : "distance-good"}>
             {Number.isFinite(distanceKm) ? `${distanceKm.toFixed(1)} km` : "—"}
           </span>
         </div>
@@ -103,7 +120,58 @@ function HazardPanel({
         </div>
       </div>
 
-      {inWarningArea && (
+      {/* Nearby Early Warning Alert Card */}
+      {activeAlertIceberg && alertETA && (
+        <div className="two-day-alert-card pulse-danger">
+          <div className="alert-card-header">
+            <span className="alert-badge-red">🚨 WARNING: ICEBERG NEARBY AHEAD</span>
+            <span className="alert-eta-chip">
+              ETA: {alertETA.formattedETA || `${Math.round(alertETA.hours * 60)} min`}
+            </span>
+          </div>
+          <div className="alert-card-body">
+            <div className="alert-berg-name">
+              <strong>{activeAlertIceberg.id}</strong>
+              <span className="alert-route-tag">ON ROUTE HAZARD</span>
+            </div>
+            <div className="alert-metrics-grid">
+              <div className="metric-col">
+                <span className="metric-lbl">TIME TO INTERCEPT</span>
+                <span className="metric-val text-cyan">
+                  {alertETA.formattedETA || `${Math.round(alertETA.hours * 60)} min`}
+                </span>
+              </div>
+              <div className="metric-col">
+                <span className="metric-lbl">HAZARD STANDOFF</span>
+                <span className="metric-val text-warning">
+                  {alertETA.distanceKm.toFixed(1)} km
+                </span>
+              </div>
+            </div>
+
+            {/* Tactical Course Deterrence Status */}
+            <div className="deterrence-status-box">
+              <div className="deter-label">
+                <span className="deter-dot"></span>
+                <strong>TACTICAL COURSE DETERRENCE:</strong>
+              </div>
+              <div className="deter-val">
+                {isDeterring ? (
+                  <span className="text-warning font-bold">
+                    ⚡ VEERING +{deterOffsetKm.toFixed(1)} KM {deterDirection} TO DETOUR AROUND {deterTarget || activeAlertIceberg.id}
+                  </span>
+                ) : (
+                  <span className="text-cyan">
+                    🛡️ ARMED: AUTOMATIC AVOIDANCE READY UPON INTERCEPT PROXIMITY
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {inWarningArea && !activeAlertIceberg && typeof routeStatus === "string" && routeStatus.startsWith("⚠️") && (
         <div className="alert-banner">
           ⚠ WARNING: {routeStatus}
         </div>
@@ -112,20 +180,39 @@ function HazardPanel({
       <div className="iceberg-gallery">
         <div className="gallery-title">
           <span>ICEBERG PROFILES</span>
-          <span className="sub-tag">SONAR X-RAY</span>
+          <span className="sub-tag">ABOVE & BELOW WATER SONAR</span>
         </div>
 
-        {nearbyIcebergs.length === 0 ? (
+        {/* Featured 2-Day Alerting Target */}
+        {activeAlertIceberg && (
+          <div style={{ marginBottom: 8 }}>
+            <IcebergProfile
+              key={`alert-${activeAlertIceberg.id}`}
+              berg={activeAlertIceberg}
+              highlighted={true}
+              alertETA={alertETA}
+              isOnRoute={true}
+            />
+          </div>
+        )}
+
+        {/* Other Detected Icebergs */}
+        {otherIcebergs.length === 0 && !activeAlertIceberg ? (
           <div className="no-hazards">NO ICEBERGS WITHIN 50 KM</div>
         ) : (
           <div className="gallery-grid">
-            {nearbyIcebergs.map((berg) => (
-              <IcebergProfile
-                key={berg.id ?? berg.iceberg_id}
-                berg={berg}
-                highlighted={(berg.id ?? berg.iceberg_id) === closestIcebergId}
-              />
-            ))}
+            {otherIcebergs.map((berg) => {
+              const bId = berg.id ?? berg.iceberg_id;
+              const isHazard = routeHazardIcebergs.some((rh) => (rh.id ?? rh.iceberg_id) === bId);
+              return (
+                <IcebergProfile
+                  key={bId}
+                  berg={berg}
+                  highlighted={bId === closestIcebergId}
+                  isOnRoute={isHazard}
+                />
+              );
+            })}
           </div>
         )}
       </div>

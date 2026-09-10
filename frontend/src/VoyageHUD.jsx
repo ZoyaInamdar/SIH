@@ -11,6 +11,11 @@ function VoyageHUD({
   currentHeading = 125,
   currentLeg = "WP-0 → WP-1",
   remainingDistKm = 0,
+  activeAlertIceberg = null,
+  alertETA = null,
+  isDeterring = false,
+  deterOffsetKm = 0,
+  deterDirection = "STARBOARD",
   onTogglePlay,
   onReset,
   onProgressScrub,
@@ -50,12 +55,22 @@ function VoyageHUD({
           <span className="hud-ship-name">MV VASILIY GOLOVNIN</span>
           <span
             className={`hud-status-badge ${
-              isCompleted ? "arrived" : isVoyaging ? "sailing" : voyageProgress > 0 ? "paused" : "sailing"
+              isCompleted
+                ? "arrived"
+                : isDeterring
+                ? "deterring"
+                : isVoyaging
+                ? "sailing"
+                : voyageProgress > 0
+                ? "paused"
+                : "sailing"
             }`}
           >
             <span className="pulse-dot"></span>
             {isCompleted
               ? "ARRIVED AT DESTINATION"
+              : isDeterring
+              ? `⚡ DETERRING AROUND ICEBERG (+${deterOffsetKm.toFixed(1)}km)`
               : isVoyaging
               ? "SAILING ON FAIRWAY"
               : voyageProgress > 0
@@ -89,6 +104,32 @@ function VoyageHUD({
 
       {!isMinimized && (
         <>
+          {/* Proximity Warning & Deterrence HUD Strip */}
+          {activeAlertIceberg && alertETA && (
+            <div className="hud-48h-warning-strip">
+              <div className="warning-strip-left">
+                <span className="hud-warn-badge">⚠️ PROXIMITY ALERT</span>
+                <span className="hud-warn-text">
+                  ICEBERG <strong>{activeAlertIceberg.id}</strong> NEARBY ON ROUTE
+                </span>
+                <span className="hud-warn-eta">
+                  ETA: {alertETA.formattedETA || `${Math.round(alertETA.hours * 60)} min`} ({alertETA.distanceKm.toFixed(1)} km)
+                </span>
+              </div>
+              <div className="warning-strip-right">
+                {isDeterring ? (
+                  <span className="hud-deter-active">
+                    ⚡ DETERRING +{deterOffsetKm.toFixed(1)} KM {deterDirection}
+                  </span>
+                ) : (
+                  <span className="hud-deter-standby">
+                    🛡️ COLLISION DETERRENCE ARMED
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Interactive Progress Track */}
           <div className="voyage-progress-section">
             <div className="voyage-progress-bar-wrap" onClick={handleProgressBarClick} title="Click to scrub voyage position">

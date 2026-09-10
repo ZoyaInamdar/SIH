@@ -1,29 +1,32 @@
 import { SHAPE_TEMPLATES } from "./icebergShapes";
 import "./hazardPanel.css";
 
-function IcebergProfile({ berg, highlighted = false }) {
-  const shape =
-    berg.shape_class in SHAPE_TEMPLATES
-      ? berg.shape_class
-      : "tabular";
+function IcebergProfile({ berg, highlighted = false, alertETA = null, isOnRoute = false }) {
+  const rawShape = String(berg.shape_class || "tabular").toLowerCase();
+  const shape = rawShape.includes("pinn")
+    ? "pinnacle"
+    : rawShape.includes("dom")
+    ? "domed"
+    : rawShape.includes("wedg")
+    ? "wedge"
+    : rawShape.includes("block")
+    ? "blocky"
+    : "tabular";
 
   const freeboardH = Number(berg.estimated_freeboard_m ?? berg.freeboard_m) || 35;
-  const draftH = Number(berg.estimated_draft_m) || 100;
+  const draftH = Number(berg.estimated_draft_m) || (freeboardH * 6.5);
   const confidence = Math.max(
     0,
-    Math.min(1, Number(berg.draft_confidence ?? berg.confidence ?? 0.8))
+    Math.min(1, Number(berg.draft_confidence ?? berg.confidence ?? 0.85))
   );
 
   const totalH = 200;
   const canvasW = 120;
 
-  const waterlineY =
-    totalH * (freeboardH / (freeboardH + draftH));
-
+  // Calculate proportional waterline Y based on real above/below ratio
+  const waterlineY = Math.max(28, Math.min(65, totalH * (freeboardH / (freeboardH + draftH))));
   const underwaterH = totalH - waterlineY;
-
-  const underwaterOpacity =
-    0.15 + confidence * 0.5;
+  const underwaterOpacity = 0.25 + confidence * 0.55;
 
   const sourceText =
     berg.data_source?.includes("BYU")
@@ -43,6 +46,8 @@ function IcebergProfile({ berg, highlighted = false }) {
       ? `1:${(draftH / freeboardH).toFixed(1)}`
       : "—";
 
+  const shapeFunction = SHAPE_TEMPLATES[shape] || SHAPE_TEMPLATES.tabular;
+
   return (
     <div
       className={`iceberg-profile-card ${
@@ -52,15 +57,35 @@ function IcebergProfile({ berg, highlighted = false }) {
       <div className="profile-status">
         <span
           className={
-            highlighted
+            alertETA
+              ? "status-dot active pulse"
+              : highlighted
               ? "status-dot active"
               : "status-dot"
           }
         />
 
-        {highlighted
+        {alertETA
+          ? `🚨 ROUTE PROXIMITY ALERT (${alertETA.formattedETA || `${Math.round(alertETA.hours * 60)} min`} ETA)`
+          : isOnRoute
+          ? "⚪ ON-ROUTE HAZARD"
+          : highlighted
           ? "CLOSEST HAZARD"
           : "STRUCTURE PROFILE"}
+      </div>
+
+      {/* Structure Split Badges: Above vs Below Water */}
+      <div className="structure-split-badges">
+        <div className="structure-badge badge-above">
+          <span>▲ ABOVE WATER</span>
+          <strong>{freeboardH.toFixed(1)}m</strong>
+          <span>Freeboard</span>
+        </div>
+        <div className="structure-badge badge-below">
+          <span>▼ BELOW WATER</span>
+          <strong>{draftH.toFixed(1)}m</strong>
+          <span>Keel Draft</span>
+        </div>
       </div>
 
       <div className="profile-svg-wrap">
@@ -77,7 +102,7 @@ function IcebergProfile({ berg, highlighted = false }) {
             x2={canvasW}
             y2={waterlineY}
             stroke="#00e5ff"
-            strokeOpacity="0.12"
+            strokeOpacity="0.25"
           />
 
           <line
@@ -86,7 +111,7 @@ function IcebergProfile({ berg, highlighted = false }) {
             x2={canvasW * 0.25}
             y2={totalH}
             stroke="#00e5ff"
-            strokeOpacity="0.06"
+            strokeOpacity="0.08"
           />
 
           <line
@@ -95,7 +120,7 @@ function IcebergProfile({ berg, highlighted = false }) {
             x2={canvasW * 0.5}
             y2={totalH}
             stroke="#00e5ff"
-            strokeOpacity="0.06"
+            strokeOpacity="0.08"
           />
 
           <line
@@ -104,12 +129,12 @@ function IcebergProfile({ berg, highlighted = false }) {
             x2={canvasW * 0.75}
             y2={totalH}
             stroke="#00e5ff"
-            strokeOpacity="0.06"
+            strokeOpacity="0.08"
           />
 
-          {/* Underwater silhouette */}
+          {/* Underwater Subsurface Keel Silhouette */}
           <path
-            d={SHAPE_TEMPLATES[shape](
+            d={shapeFunction(
               canvasW,
               underwaterH
             )}
@@ -117,8 +142,7 @@ function IcebergProfile({ berg, highlighted = false }) {
             fill="#00e5ff"
             opacity={underwaterOpacity}
             style={{
-              filter:
-                "drop-shadow(0 0 7px rgba(0,229,255,0.7))",
+              filter: "drop-shadow(0 0 8px rgba(0,229,255,0.75))",
             }}
           />
 
@@ -129,17 +153,20 @@ function IcebergProfile({ berg, highlighted = false }) {
             x2={canvasW / 2}
             y2={totalH}
             stroke="#00e5ff"
-            strokeOpacity="0.15"
+            strokeOpacity="0.2"
             strokeDasharray="2,3"
           />
 
-          {/* Surface silhouette */}
+          {/* Above-Water Surface Sail Silhouette */}
           <path
-            d={SHAPE_TEMPLATES[shape](
+            d={shapeFunction(
               canvasW,
               waterlineY
             )}
             fill="#ffffff"
+            style={{
+              filter: "drop-shadow(0 0 4px rgba(255,255,255,0.8))",
+            }}
           />
 
           {/* Waterline */}
@@ -149,7 +176,7 @@ function IcebergProfile({ berg, highlighted = false }) {
             x2={canvasW}
             y2={waterlineY}
             stroke="#ffffff"
-            strokeOpacity="0.8"
+            strokeOpacity="0.85"
             strokeDasharray="4,3"
           />
 
@@ -158,10 +185,23 @@ function IcebergProfile({ berg, highlighted = false }) {
             x="4"
             y={waterlineY - 4}
             fill="#8ffcff"
-            fontSize="5"
+            fontSize="6"
             fontFamily="monospace"
+            fontWeight="bold"
           >
-            WATERLINE
+            WATERLINE (0m)
+          </text>
+
+          {/* Subsurface Keel Label */}
+          <text
+            x="4"
+            y={totalH - 6}
+            fill="#00e5ff"
+            fontSize="5.5"
+            fontFamily="monospace"
+            opacity="0.85"
+          >
+            KEEL DRAFT: -{draftH.toFixed(0)}m
           </text>
         </svg>
       </div>
@@ -184,23 +224,23 @@ function IcebergProfile({ berg, highlighted = false }) {
         </div>
 
         <div>
-          Freeboard: {freeboardH.toFixed(1)}m
+          Visible Freeboard: <strong>{freeboardH.toFixed(1)}m</strong>
         </div>
 
         <div>
-          Draft:{" "}
-          <strong>{draftH.toFixed(1)}m</strong>
+          Subsurface Draft:{" "}
+          <strong className="cyan-text">{draftH.toFixed(1)}m</strong>
         </div>
 
         <div>
           Confidence:{" "}
           <span className="cyan-text">
-            {confidenceLabel}
+            {confidenceLabel} ({Math.round(confidence * 100)}%)
           </span>
         </div>
 
         <div>
-          Source: {sourceText}
+          Detection: {sourceText}
         </div>
       </div>
     </div>

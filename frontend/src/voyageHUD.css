@@ -324,3 +324,98 @@
   font-size: 10px;
   cursor: pointer;
 }
+
+/* Deterring Status Badge */
+.hud-status-badge.deterring {
+  background: rgba(255, 145, 0, 0.25);
+  color: #ff9100;
+  border: 1px solid rgba(255, 145, 0, 0.7);
+  box-shadow: 0 0 12px rgba(255, 145, 0, 0.45);
+  animation: badgeWarnPulse 1.8s infinite ease-in-out;
+}
+
+@keyframes badgeWarnPulse {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(255, 145, 0, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 5px rgba(255, 145, 0, 0.2);
+  }
+}
+
+/* 48-Hour Warning & Deterrence HUD Strip */
+.hud-48h-warning-strip {
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: rgba(183, 28, 28, 0.45);
+  border: 1px solid rgba(255, 23, 68, 0.6);
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  gap: 10px;
+  animation: hudWarnGlow 2.5s infinite ease-in-out;
+}
+
+@keyframes hudWarnGlow {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(255, 23, 68, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 4px rgba(255, 23, 68, 0.15);
+  }
+}
+
+.warning-strip-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-warn-badge {
+  background: #d50000;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+
+.hud-warn-text {
+  color: #ffffff;
+}
+
+.hud-warn-eta {
+  color: #00e5ff;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+}
+
+.warning-strip-right {
+  display: flex;
+  align-items: center;
+}
+
+.hud-deter-active {
+  background: rgba(255, 215, 64, 0.2);
+  border: 1px solid #ffd740;
+  color: #ffd740;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 8px rgba(255, 215, 64, 0.3);
+}
+
+.hud-deter-standby {
+  background: rgba(0, 229, 255, 0.15);
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  color: #00e5ff;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
