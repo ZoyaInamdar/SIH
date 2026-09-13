@@ -96,11 +96,18 @@ temp/
 *.onnx
 *.pkl
 *.joblib
+*.idx
 *.bin
 *.safetensors
 
 # Keep specific models needed by application
 !data/sonar/outputs/yolo/sonar_yolo26n/weights/best.pt
+
+# ============================================================
+# Generated / Cache Files
+# ============================================================
+__MACOSX/
+._*
 
 # ============================================================
 # Sonar / FLS Dataset & Training Outputs
@@ -121,10 +128,11 @@ data/sonar/outputs/yolo/*/labels.jpg
 data/sonar/outputs/yolo/*/labels_correlogram.jpg
 data/sonar/outputs/yolo/*/weights/last.pt
 
-# Dataset archives
+# ============================================================
+# Dataset Archives
+# ============================================================
 data/sonar/*.tar
 data/sonar/*.tar.gz
 data/sonar/*.tar.bz2
 data/sonar/*.tar.xz
 data/sonar/*dataset*.zip
-
