@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from .database import update_iceberg_sonar_feedback
 from .services.sonar_hazard_service import (
     process_sonar_observation,
     get_sonar_hazards,
@@ -39,6 +40,13 @@ class SonarObservationRequest(BaseModel):
     )
 
 
+class SonarIcebergFeedbackRequest(BaseModel):
+    iceberg_id: str
+    estimated_draft_m: float = Field(gt=0)
+    confidence: float = Field(ge=0.0, le=1.0)
+    source: str = "sonar-corrected"
+
+
 # ---------------------------------------------------------------------
 # Submit sonar observation
 # ---------------------------------------------------------------------
@@ -56,6 +64,19 @@ def submit_sonar_observation(
         vessel_longitude=request.vessel_longitude,
     )
 
+    # If observation provides iceberg feedback, update the IcebergRecord
+    obs = request.observation
+    iceberg_id = obs.get("iceberg_id")
+    draft_m = obs.get("estimated_draft_m") or obs.get("draft_m")
+    conf = obs.get("confidence") or obs.get("draft_confidence")
+    if iceberg_id and draft_m is not None:
+        update_iceberg_sonar_feedback(
+            iceberg_id=iceberg_id,
+            estimated_draft_m=float(draft_m),
+            confidence=float(conf) if conf is not None else 0.90,
+            source="sonar-corrected"
+        )
+
     return {
         "status": "accepted",
 
@@ -71,6 +92,32 @@ def submit_sonar_observation(
             hazard.to_dict()
             for hazard in hazards
         ],
+    }
+
+
+# ---------------------------------------------------------------------
+# Sonar Feedback Loop for Iceberg Draft & Confidence
+# ---------------------------------------------------------------------
+
+@router.post("/feedback/iceberg")
+def submit_sonar_iceberg_feedback(request: SonarIcebergFeedbackRequest):
+    """
+    Direct Sonar Feedback Loop:
+    Updates an existing IcebergRecord's estimated_draft_m and confidence.
+    This then propagates directly down into the RiskState aggregation layer.
+    """
+    updated = update_iceberg_sonar_feedback(
+        iceberg_id=request.iceberg_id,
+        estimated_draft_m=request.estimated_draft_m,
+        confidence=request.confidence,
+        source=request.source,
+    )
+    return {
+        "status": "success" if updated else "not_found",
+        "iceberg_id": request.iceberg_id,
+        "estimated_draft_m": request.estimated_draft_m,
+        "confidence": request.confidence,
+        "propagated_to_risk_state": True
     }
 
 
@@ -103,4 +150,4 @@ def list_localized_sonar_hazards():
         "count": len(hazards),
 
         "hazards": hazards,
-    }
+    }

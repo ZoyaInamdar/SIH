@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime, timezone
 
 
 DATABASE_NAME = "backend/antarctic.db"
@@ -13,6 +14,37 @@ def get_connection():
     connection.row_factory = sqlite3.Row
 
     return connection
+
+
+def update_iceberg_sonar_feedback(
+    iceberg_id: str,
+    estimated_draft_m: float,
+    confidence: float,
+    source: str = "sonar-corrected"
+) -> bool:
+    """
+    Direct Sonar Feedback Loop:
+    Updates an existing IcebergRecord's estimated_draft_m and confidence.
+    This authoritative record then propagates directly into the unified RiskState.
+    """
+    connection = get_connection()
+    cursor = connection.cursor()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    cursor.execute(
+        """
+        UPDATE icebergs
+        SET estimated_draft_m = ?,
+            confidence = ?,
+            source = ?,
+            last_updated = ?
+        WHERE iceberg_id = ?
+        """,
+        (estimated_draft_m, confidence, source, now_iso, iceberg_id)
+    )
+    rows_affected = cursor.rowcount
+    connection.commit()
+    connection.close()
+    return rows_affected > 0
 
 
 def initialize_database():

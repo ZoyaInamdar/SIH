@@ -51,7 +51,7 @@ function VoyageHUD({
       {/* Header Row */}
       <div className="voyage-hud-header">
         <div className="hud-title-group">
-          <span className="hud-ship-icon">🚢</span>
+          <span className="hud-ship-tag">[VESSEL]</span>
           <span className="hud-ship-name">MV VASILIY GOLOVNIN</span>
           <span
             className={`hud-status-badge ${
@@ -68,14 +68,14 @@ function VoyageHUD({
           >
             <span className="pulse-dot"></span>
             {isCompleted
-              ? "ARRIVED AT DESTINATION"
+              ? "DESTINATION REACHED"
               : isDeterring
-              ? `⚡ DETERRING AROUND ICEBERG (+${deterOffsetKm.toFixed(1)}km)`
+              ? `AUTONAV DETOUR: +${deterOffsetKm.toFixed(1)} KM ${deterDirection}`
               : isVoyaging
-              ? "SAILING ON FAIRWAY"
+              ? "FAIRWAY TRANSIT ACTIVE"
               : voyageProgress > 0
-              ? "VOYAGE PAUSED"
-              : "READY TO SAIL"}
+              ? "TRANSIT PAUSED"
+              : "STANDBY READY"}
           </span>
         </div>
 
@@ -98,7 +98,7 @@ function VoyageHUD({
           onClick={() => setIsMinimized(!isMinimized)}
           title={isMinimized ? "Expand Nav HUD" : "Minimize Nav HUD"}
         >
-          {isMinimized ? "▲ Expand" : "▼"}
+          {isMinimized ? "▲ EXPAND" : "▼ HIDE"}
         </button>
       </div>
 
@@ -108,9 +108,9 @@ function VoyageHUD({
           {activeAlertIceberg && alertETA && (
             <div className="hud-48h-warning-strip">
               <div className="warning-strip-left">
-                <span className="hud-warn-badge">⚠️ PROXIMITY ALERT</span>
+                <span className="hud-warn-badge">[ALARM] CPA PROXIMITY</span>
                 <span className="hud-warn-text">
-                  ICEBERG <strong>{activeAlertIceberg.id}</strong> NEARBY ON ROUTE
+                  ICEBERG <strong>{activeAlertIceberg.id}</strong> ON FAIRWAY INTERCEPT
                 </span>
                 <span className="hud-warn-eta">
                   ETA: {alertETA.formattedETA || `${Math.round(alertETA.hours * 60)} min`} ({alertETA.distanceKm.toFixed(1)} km)
@@ -119,11 +119,11 @@ function VoyageHUD({
               <div className="warning-strip-right">
                 {isDeterring ? (
                   <span className="hud-deter-active">
-                    ⚡ DETERRING +{deterOffsetKm.toFixed(1)} KM {deterDirection}
+                    ACTIVE DETERRENCE: +{deterOffsetKm.toFixed(1)} KM {deterDirection}
                   </span>
                 ) : (
                   <span className="hud-deter-standby">
-                    🛡️ COLLISION DETERRENCE ARMED
+                    AUTONAV COLLISION DETERRENCE ARMED
                   </span>
                 )}
               </div>
@@ -151,23 +151,23 @@ function VoyageHUD({
                 className={`hud-btn primary ${isVoyaging ? "active" : ""}`}
                 onClick={onTogglePlay}
               >
-                {isCompleted ? "🔄 Sail Again" : isVoyaging ? "⏸ Pause" : "▶ Sail Route"}
+                {isCompleted ? "[ REPLAY ]" : isVoyaging ? "[ PAUSE ]" : "[ ENGAGE FAIRWAY ]"}
               </button>
               <button className="hud-btn" onClick={onReset} title="Reset vessel to starting position">
-                ⏮ Start
+                [ RESET ]
               </button>
 
-              {/* Speed Multiplier calibrated for Hackathon Presentation */}
+              {/* Speed Multiplier calibrated for Presentation */}
               <div className="speed-group">
-                <span className="speed-tag">SPEED:</span>
+                <span className="speed-tag">RATE:</span>
                 {[0.5, 1, 1.5, 2.5].map((s) => (
                   <button
                     key={s}
                     className={`speed-btn ${speedMultiplier === s ? "selected" : ""}`}
                     onClick={() => onSetSpeed(s)}
-                    title={s === 1 ? "1x Hackathon Presentation Pace (~90s)" : `${s}x Speed`}
+                    title={s === 1 ? "1x Presentation Pace" : `${s}x Speed`}
                   >
-                    {s === 1 ? "1x (Normal)" : `${s}x`}
+                    {s === 1 ? "1x" : `${s}x`}
                   </button>
                 ))}
               </div>
@@ -180,7 +180,7 @@ function VoyageHUD({
                 onClick={onToggleFollowCamera}
                 title="Third-Person perspective overlooking the ship and fairway ahead"
               >
-                🎥 {followCamera ? "3rd Person Tracking ON" : "Tactical Overview"}
+                {followCamera ? "CAM: VESSEL CHASE [ON]" : "CAM: CHASE [OFF]"}
               </button>
             </div>
           </div>

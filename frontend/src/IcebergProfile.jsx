@@ -66,9 +66,9 @@ function IcebergProfile({ berg, highlighted = false, alertETA = null, isOnRoute 
         />
 
         {alertETA
-          ? `🚨 ROUTE PROXIMITY ALERT (${alertETA.formattedETA || `${Math.round(alertETA.hours * 60)} min`} ETA)`
+          ? `[ALARM] CPA PROXIMITY (${alertETA.formattedETA || `${Math.round(alertETA.hours * 60)} min`} ETA)`
           : isOnRoute
-          ? "⚪ ON-ROUTE HAZARD"
+          ? "[HAZARD] ROUTE INTERCEPT"
           : highlighted
           ? "CLOSEST HAZARD"
           : "STRUCTURE PROFILE"}
@@ -95,14 +95,14 @@ function IcebergProfile({ berg, highlighted = false, alertETA = null, isOnRoute 
           height="180"
           preserveAspectRatio="xMidYMid meet"
         >
-          {/* Subtle sonar grid */}
+          {/* Calibration grid lines */}
           <line
             x1="0"
             y1={waterlineY}
             x2={canvasW}
             y2={waterlineY}
-            stroke="#00e5ff"
-            strokeOpacity="0.25"
+            stroke="#2C2F33"
+            strokeOpacity="0.5"
           />
 
           <line
@@ -110,8 +110,8 @@ function IcebergProfile({ berg, highlighted = false, alertETA = null, isOnRoute 
             y1="0"
             x2={canvasW * 0.25}
             y2={totalH}
-            stroke="#00e5ff"
-            strokeOpacity="0.08"
+            stroke="#2C2F33"
+            strokeOpacity="0.3"
           />
 
           <line
@@ -119,8 +119,8 @@ function IcebergProfile({ berg, highlighted = false, alertETA = null, isOnRoute 
             y1="0"
             x2={canvasW * 0.5}
             y2={totalH}
-            stroke="#00e5ff"
-            strokeOpacity="0.08"
+            stroke="#2C2F33"
+            strokeOpacity="0.3"
           />
 
           <line
@@ -128,8 +128,8 @@ function IcebergProfile({ berg, highlighted = false, alertETA = null, isOnRoute 
             y1="0"
             x2={canvasW * 0.75}
             y2={totalH}
-            stroke="#00e5ff"
-            strokeOpacity="0.08"
+            stroke="#2C2F33"
+            strokeOpacity="0.3"
           />
 
           {/* Underwater Subsurface Keel Silhouette */}
@@ -152,8 +152,8 @@ function IcebergProfile({ berg, highlighted = false, alertETA = null, isOnRoute 
             y1={waterlineY}
             x2={canvasW / 2}
             y2={totalH}
-            stroke="#00e5ff"
-            strokeOpacity="0.2"
+            stroke="#2C2F33"
+            strokeOpacity="0.5"
             strokeDasharray="2,3"
           />
 
@@ -163,9 +163,9 @@ function IcebergProfile({ berg, highlighted = false, alertETA = null, isOnRoute 
               canvasW,
               waterlineY
             )}
-            fill="#ffffff"
+            fill="#EDEDEA"
             style={{
-              filter: "drop-shadow(0 0 4px rgba(255,255,255,0.8))",
+              filter: "drop-shadow(0 0 4px rgba(237,237,234,0.4))",
             }}
           />
 
@@ -175,7 +175,7 @@ function IcebergProfile({ berg, highlighted = false, alertETA = null, isOnRoute 
             y1={waterlineY}
             x2={canvasW}
             y2={waterlineY}
-            stroke="#ffffff"
+            stroke="#EDEDEA"
             strokeOpacity="0.85"
             strokeDasharray="4,3"
           />
@@ -184,7 +184,7 @@ function IcebergProfile({ berg, highlighted = false, alertETA = null, isOnRoute 
           <text
             x="4"
             y={waterlineY - 4}
-            fill="#8ffcff"
+            fill="#EDEDEA"
             fontSize="6"
             fontFamily="monospace"
             fontWeight="bold"
@@ -242,6 +242,16 @@ function IcebergProfile({ berg, highlighted = false, alertETA = null, isOnRoute 
         <div>
           Detection: {sourceText}
         </div>
+
+        {(berg.drift_speed_knots != null || berg.drift_direction_degrees != null) && (
+          <div className="profile-drift-row">
+            <span>Drift Forecast:</span>
+            <strong className="cyan-text">
+              {(berg.drift_speed_knots ?? 0.8).toFixed(1)} kn @ {Math.round(berg.drift_direction_degrees ?? 48)}°
+              <span className="drift-horizon-tag">(+12h: {((berg.drift_speed_knots ?? 0.8) * 12).toFixed(1)} NM)</span>
+            </strong>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -5,15 +5,34 @@ import "cesium/Build/Cesium/Widgets/widgets.css";
 import HazardPanel from "./HazardPanel";
 import RoutePlanner from "./RoutePlanner";
 import VoyageHUD from "./VoyageHUD";
+import MissionDashboard from "./MissionDashboard";
+import RouteForecastPanel from "./RouteForecastPanel";
+import ShipInfoSidebar from "./ShipInfoSidebar";
+import WeatherHazardSidebar from "./WeatherHazardSidebar";
+import ForecastFreshnessBadge from "./components/ForecastFreshnessBadge";
+import VoyageBundleScreen from "./components/VoyageBundleScreen";
+import { onRealPositionUpdate, getDisplayPosition } from "./navigation/deadReckoningFallback";
 import "./hazardPanel.css";
+import "./sidebarNav.css";
 import "./App.css";
+import {
+  SHAPE_OUTLINES,
+  normalizeShapeClass,
+  scaleOutlineToRealSize,
+  getScaledIcebergOutline,
+  getIcebergMaterialProperties
+} from "./icebergGeometry";
 
-const BACKEND = typeof window !== "undefined" && window.location.origin.includes("http") 
-  ? window.location.origin.replace(":3000", ":8000") 
+const BACKEND = typeof window !== "undefined" && window.location.hostname
+  ? (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+      ? "http://127.0.0.1:8000"
+      : `${window.location.protocol}//${window.location.hostname}:8000`)
   : "http://127.0.0.1:8000";
 
-const WS_URL = typeof window !== "undefined" && window.location.host
-  ? `ws://${window.location.host.replace(":3000", ":8000")}/ws/nmea`
+const WS_URL = typeof window !== "undefined" && window.location.hostname
+  ? (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+      ? "ws://127.0.0.1:8000/ws/nmea"
+      : `ws://${window.location.hostname}:8000/ws/nmea`)
   : "ws://127.0.0.1:8000/ws/nmea";
 
 const DEMO_ICEBERG_ID = "ICB-2026-A23A";
@@ -29,52 +48,119 @@ const FALLBACK_ICEBERGS = [
     iceberg_id: "ICB-2026-A23A",
     lat: -62.70,
     lon: -59.80,
-    length_m: 3800,
-    width_m: 2400,
-    freeboard_m: 42,
-    estimated_draft_m: 315,
-    confidence: 0.94,
-    shape_class: "tabular",
-    size_class: "very_large"
-  },
-  {
-    id: "ICB-2026-B15A",
-    iceberg_id: "ICB-2026-B15A",
-    lat: -62.65,
-    lon: -59.78,
-    length_m: 1800,
-    width_m: 1100,
-    freeboard_m: 34,
-    estimated_draft_m: 240,
-    confidence: 0.89,
-    shape_class: "tabular",
-    size_class: "large"
+    length_m: 3400,
+    width_m: 2200,
+    freeboard_m: 45,
+    estimated_draft_m: 440,
+    draft_confidence: 0.92,
+    confidence: 0.92,
+    shape_class: "TABULAR",
+    source: "satellite",
+    size_class: "very_large",
+    drift_speed_knots: 0.6,
+    drift_direction_degrees: 42
   },
   {
     id: "ICB-2026-PINN",
     iceberg_id: "ICB-2026-PINN",
-    lat: -62.78,
-    lon: -59.35,
-    length_m: 850,
-    width_m: 520,
-    freeboard_m: 58,
-    estimated_draft_m: 195,
-    confidence: 0.85,
-    shape_class: "pinnacle",
-    size_class: "medium"
+    lat: -62.72,
+    lon: -59.62,
+    length_m: 1200,
+    width_m: 750,
+    freeboard_m: 65,
+    estimated_draft_m: 260,
+    draft_confidence: 0.88,
+    confidence: 0.88,
+    shape_class: "PINNACLE",
+    source: "sonar_corrected",
+    size_class: "large",
+    drift_speed_knots: 0.9,
+    drift_direction_degrees: 55
+  },
+  {
+    id: "ICB-2026-DRYDOCK",
+    iceberg_id: "ICB-2026-DRYDOCK",
+    lat: -62.66,
+    lon: -59.50,
+    length_m: 1100,
+    width_m: 750,
+    freeboard_m: 32,
+    estimated_draft_m: 175,
+    draft_confidence: 0.70,
+    confidence: 0.70,
+    shape_class: "DRYDOCK",
+    source: "crew_report",
+    size_class: "medium",
+    drift_speed_knots: 1.1,
+    drift_direction_degrees: 38
   },
   {
     id: "ICB-2026-DOME",
     iceberg_id: "ICB-2026-DOME",
-    lat: -62.85,
-    lon: -58.45,
-    length_m: 1100,
-    width_m: 700,
-    freeboard_m: 28,
-    estimated_draft_m: 165,
-    confidence: 0.91,
-    shape_class: "domed",
-    size_class: "medium"
+    lat: -62.78,
+    lon: -59.35,
+    length_m: 800,
+    width_m: 550,
+    freeboard_m: 22,
+    estimated_draft_m: 115,
+    draft_confidence: 0.85,
+    confidence: 0.85,
+    shape_class: "DOMED",
+    source: "satellite",
+    size_class: "medium",
+    drift_speed_knots: 0.7,
+    drift_direction_degrees: 60
+  },
+  {
+    id: "ICB-2026-WEDGE",
+    iceberg_id: "ICB-2026-WEDGE",
+    lat: -62.82,
+    lon: -59.10,
+    length_m: 550,
+    width_m: 350,
+    freeboard_m: 16,
+    estimated_draft_m: 75,
+    draft_confidence: 0.80,
+    confidence: 0.80,
+    shape_class: "WEDGE",
+    source: "satellite",
+    size_class: "small",
+    drift_speed_knots: 0.8,
+    drift_direction_degrees: 48
+  },
+  {
+    id: "ICB-2026-NODRAFT",
+    iceberg_id: "ICB-2026-NODRAFT",
+    lat: -62.67,
+    lon: -59.95,
+    length_m: 700,
+    width_m: 450,
+    freeboard_m: 20,
+    estimated_draft_m: null,
+    draft_confidence: 0.30,
+    confidence: 0.30,
+    shape_class: "BLOCKY",
+    source: "satellite",
+    size_class: "medium",
+    drift_speed_knots: 1.3,
+    drift_direction_degrees: 32
+  },
+  {
+    id: "ICB-2026-LOWCONF",
+    iceberg_id: "ICB-2026-LOWCONF",
+    lat: -62.74,
+    lon: -59.45,
+    length_m: 320,
+    width_m: 220,
+    freeboard_m: 9,
+    estimated_draft_m: 38,
+    draft_confidence: 0.25,
+    confidence: 0.25,
+    shape_class: "DOMED",
+    source: "satellite",
+    size_class: "small",
+    drift_speed_knots: 0.9,
+    drift_direction_degrees: 50
   }
 ];
 
@@ -88,7 +174,7 @@ const DEFAULT_FAIRWAY_ROUTE = {
     { longitude: -61.20, latitude: -62.86 }, // WP-2: Bransfield Central Channel
     { longitude: -60.50, latitude: -62.83 }, // WP-3: North of Deception Island / Deep Fairway
     { longitude: -60.00, latitude: -62.77 }, // WP-4: Bransfield Open Fairway South of Hurd
-    { longitude: -59.78, latitude: -62.72 }, // WP-5: Open Water Fairway Approach to ICB-2026-A23A
+    { longitude: -59.78, latitude: -62.75 }, // WP-5: Bransfield Fairway Clear of A23A Standoff
     { longitude: -59.35, latitude: -62.78 }, // WP-6: Deep Ocean Fairway South of Robert Island
     { longitude: -58.20, latitude: -62.88 }  // WP-7: Antarctic Sound Deep Water Approach
   ]
@@ -226,10 +312,16 @@ function findIcebergCPAOnRoute(berg, points, segDistances, totalDist) {
   const steerSign = relAngle >= 0 ? -1 : 1;
   const steerDirection = steerSign === 1 ? "STARBOARD" : "PORT";
 
+  const freeboard = Number(berg.freeboard_m) || 35;
+  const draft = Number(berg.estimated_draft_m) || (freeboard * 6.0);
   const width = Number(berg.width_m) || 1200;
   const length = Number(berg.length_m) || 2000;
-  const hazardRadiusKm = Math.max(10, (width + length) / 400 + 8);
-  const isOnRoute = minD <= hazardRadiusKm;
+  // Sized strictly based on estimated underwater draft (consistent with visual hazard zone)
+  const baseStandOffM = Math.max(500, Math.round(draft * 5.0 + (Math.min(width, length) / 3)));
+  const safeRadiusKm = (Math.round(baseStandOffM / 50) * 50) / 1000.0;
+  const hazardRadiusKm = safeRadiusKm;
+  // Route triggers avoidance if nominal centerline passes within hazard zone radius + safety buffer
+  const isOnRoute = minD <= (hazardRadiusKm + 1.2);
 
   return {
     bergId: berg.iceberg_id || berg.id || "ICEBERG",
@@ -244,15 +336,15 @@ function findIcebergCPAOnRoute(berg, points, segDistances, totalDist) {
   };
 }
 
-// Computes smooth C^2 along-track deterrence curve across a wide transition window
+// Computes smooth C^2 along-track deterrence curve guaranteeing the route NEVER enters the hazard zone
 function getSmoothRouteDeterrence(s, cpaList) {
   let totalOffsetKm = 0;
   let maxOffsetKm = 0;
   let activeTarget = null;
   let activeDirection = "STARBOARD";
 
-  // Wide, gradual transition window: 24 km before and after obstacle (~48 km total transition)
-  const L_trans = 24.0;
+  // Wide, gradual transition window: 28 km before and after obstacle (~56 km total fairway arc)
+  const L_trans = 28.0;
 
   cpaList.forEach((cpa) => {
     if (!cpa.isOnRoute) return;
@@ -262,9 +354,10 @@ function getSmoothRouteDeterrence(s, cpaList) {
       const u = Math.abs(deltaS) / L_trans; // 0 at CPA, 1 at boundary
       const taper = Math.cos((Math.PI * u) / 2) ** 2;
 
-      // 3.2 km gentle clearance deflection
-      const ampKm = 3.2;
-      const offset = cpa.steerSign * ampKm * taper;
+      // Hard No-Go Clearance Constraint:
+      // Guarantee that the deflected route point is at least (hazardRadiusKm + 1.2km) away from the iceberg!
+      const requiredClearanceKm = Math.max(4.0, (cpa.hazardRadiusKm - cpa.cpa_dist_km) + 1.6);
+      const offset = cpa.steerSign * requiredClearanceKm * taper;
       totalOffsetKm += offset;
 
       const absOffset = Math.abs(offset);
@@ -451,6 +544,17 @@ function App() {
     glowRing: null,
   });
 
+  const [viewMode, setViewMode] = useState("map"); // "map" | "dashboard"
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(false);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
+  const [isDayMode, setIsDayMode] = useState(false);
+  const [utcClock, setUtcClock] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setUtcClock(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const [ship, setShip] = useState(null);
   const [gpsFix, setGpsFix] = useState(true);
   const [distanceKm, setDistanceKm] = useState(Infinity);
@@ -487,6 +591,148 @@ function App() {
   useEffect(() => {
     activeRouteRef.current = activeRoute;
   }, [activeRoute]);
+
+  // Real-Time Forecasting & Environmental Telemetry States (ERA5, GLORYS, Unified RiskState)
+  const [realtimeWeather, setRealtimeWeather] = useState(null);
+  const [realtimeRisk, setRealtimeRisk] = useState(null);
+  const [realtimeVessel, setRealtimeVessel] = useState(null);
+  const [realtimeRouteStats, setRealtimeRouteStats] = useState(null);
+
+  // 48-Hour Environmental & Route Forecasting State (ERA5 & GLORYS Forward Model)
+  const [forecast48h, setForecast48h] = useState(null);
+  const [isForecastLoading, setIsForecastLoading] = useState(false);
+  const [isForecastModalOpen, setIsForecastModalOpen] = useState(false);
+  const [showDriftForecast, setShowDriftForecast] = useState(true);
+  const showDriftForecastRef = useRef(true);
+  const [showIcebergLabels, setShowIcebergLabels] = useState(false);
+  const showIcebergLabelsRef = useRef(false);
+  const [isVoyageBundleOpen, setIsVoyageBundleOpen] = useState(false);
+
+  // Single high-performance unified telemetry polling (non-blocking 800ms interval)
+  const isFetchingTelemetryRef = useRef(false);
+  const shipPositionRef = useRef(ship);
+  const lastHazardCheckRef = useRef(0);
+  useEffect(() => {
+    shipPositionRef.current = ship;
+  }, [ship]);
+
+  // Fetch 48-Hour Forward Route Forecast
+  const fetchForecast48h = useCallback(async () => {
+    const currentShip = shipPositionRef.current;
+    const sLat = currentShip?.lat ?? currentShip?.latitude ?? -62.83;
+    const sLon = currentShip?.lon ?? currentShip?.longitude ?? -60.50;
+    const speed = Number(currentShip?.speed_knots ?? 12.4);
+
+    try {
+      setIsForecastLoading(true);
+      const resp = await fetch(`${BACKEND}/weather/forecast/48h?latitude=${sLat}&longitude=${sLon}&speed_knots=${speed}`);
+      if (resp && resp.ok) {
+        const data = await resp.json();
+        setForecast48h(data);
+      }
+    } catch (err) {
+      console.warn("Could not load 48h route forecast:", err);
+    } finally {
+      setIsForecastLoading(false);
+    }
+  }, [BACKEND]);
+
+  useEffect(() => {
+    fetchForecast48h();
+    const interval = setInterval(fetchForecast48h, 20000);
+    return () => clearInterval(interval);
+  }, [fetchForecast48h]);
+
+  useEffect(() => {
+    const fetchTelemetry = () => {
+      const currentShip = shipPositionRef.current;
+      const sLat = currentShip?.lat ?? currentShip?.latitude ?? -62.82;
+      const sLon = currentShip?.lon ?? currentShip?.longitude ?? -60.46;
+      const sog = currentShip?.speed_knots ?? 13.5;
+      const hdg = currentShip?.heading ?? currentShip?.heading_deg ?? 95.0;
+
+      if (isFetchingTelemetryRef.current) return;
+      isFetchingTelemetryRef.current = true;
+
+      fetch(`${BACKEND}/telemetry/live?latitude=${sLat}&longitude=${sLon}&speed_knots=${sog}&heading_degrees=${hdg}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data && data.weather && data.sea_ice && data.propulsion) {
+            setRealtimeWeather({
+              windSpeedKnots: data.weather.wind.speed_knots,
+              windDirectionDeg: data.weather.wind.direction_degrees,
+              gustKnots: data.weather.wind.gust_knots,
+              waveHeightMeters: data.weather.waves.significant_height_m,
+              swellPeriodSeconds: data.weather.waves.swell_period_s,
+              currentKnots: data.weather.ocean_currents.speed_knots,
+              seaTempC: data.weather.ocean_currents.sea_surface_temp_c,
+              source: data.weather.source,
+            });
+
+            setRealtimeRisk({
+              sic: data.sea_ice.sic,
+              sicPercent: data.sea_ice.sic_percent,
+              sitMeters: data.sea_ice.sit_m,
+              wmoZone: data.sea_ice.wmo_zone,
+              operationalRisk: data.sea_ice.operational_risk,
+              polarisRio: data.sea_ice.polaris_rio,
+            });
+
+            setRealtimeVessel(data.propulsion);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          isFetchingTelemetryRef.current = false;
+        });
+    };
+
+    fetchTelemetry();
+    const interval = setInterval(fetchTelemetry, 750);
+    return () => clearInterval(interval);
+  }, [BACKEND]);
+
+  // Initial load of vessel profile and route stats from backend
+  useEffect(() => {
+    fetch(`${BACKEND}/vessels/profile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vessel_id: "MV-VG-001", draft_m: 8.5, ice_class: "Arc5" }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && data.propulsion) {
+          setRealtimeVessel(data.propulsion);
+        }
+      })
+      .catch(() => {});
+
+    // Fetch optimal fairway route calculation from backend
+    fetch(`${BACKEND}/routes/calculate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        start_latitude: -62.90,
+        start_longitude: -62.00,
+        destination_latitude: -62.88,
+        destination_longitude: -58.20,
+        vessel_id: "MV-VG-001"
+      })
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && data.fuel_efficient_route) {
+          setRealtimeRouteStats({
+            distanceKm: data.fuel_efficient_route.distance_km,
+            fuelSavedPercent: data.fuel_saved_percent,
+            estimatedFuelCost: data.fuel_efficient_route.estimated_fuel_cost,
+            riskLevel: data.fuel_efficient_route.risk_level,
+            etaHours: (data.fuel_efficient_route.distance_km / 14.5).toFixed(1)
+          });
+        }
+      })
+      .catch(() => {});
+  }, [BACKEND]);
 
   // 3D Visual Studio State
   const [activePreset, setActivePreset] = useState("antarctica");
@@ -658,6 +904,18 @@ function App() {
         },
         duration: 1.8,
       });
+    } else if (preset === "icebergs") {
+      setFollowShipCamera(false);
+      // Tactical 3D close-up of the iceberg fairway and hazard warning zones
+      viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(-59.68, -62.82, 22000),
+        orientation: {
+          heading: Cesium.Math.toRadians(350),
+          pitch: Cesium.Math.toRadians(-35),
+          roll: 0.0,
+        },
+        duration: 1.6,
+      });
     } else if (preset === "earth") {
       setFollowShipCamera(false);
       // Realistic Whole Earth in Space looking toward Antarctica
@@ -706,7 +964,7 @@ function App() {
         dimensions: new Cesium.Cartesian3(54, 250, 32),
         material: Cesium.Color.fromCssColorString("#ff2a00"),
         outline: true,
-        outlineColor: Cesium.Color.fromCssColorString("#ffcdd2"),
+        outlineColor: Cesium.Color.fromCssColorString("#E8E8E0"),
         outlineWidth: 2,
       },
     });
@@ -791,15 +1049,15 @@ function App() {
       },
     });
 
-    // 9. Luminous Warm Amber Locator Ring & Wake Indicator
+    // 9. Luminous Own-Ship Locator Ring & Wake Indicator (IHO S-52 ECDIS #E8E8E0)
     shipParts.glowRing = viewer.entities.add({
       position: Cesium.Cartesian3.fromDegrees(lon, lat, 4),
       ellipse: {
         semiMajorAxis: 380.0,
         semiMinorAxis: 380.0,
-        material: Cesium.Color.fromCssColorString("#ff6d00").withAlpha(0.24),
+        material: Cesium.Color.fromCssColorString("#E8E8E0").withAlpha(0.18),
         outline: true,
-        outlineColor: Cesium.Color.fromCssColorString("#ff9100").withAlpha(0.95),
+        outlineColor: Cesium.Color.fromCssColorString("#E8E8E0").withAlpha(0.95),
         outlineWidth: 3,
       },
     });
@@ -809,7 +1067,9 @@ function App() {
       name: "Ship Label",
       position: localOffset(center, 0, 0, 75),
       label: {
-        text: `🚢 MV VASILIY GOLOVNIN\n[ POLAR CLASS 4 | ${Number(position.speed_knots || 12.4).toFixed(1)} KN ]`,
+        text: position.estimated
+          ? `ESTIMATED POSITION (DEAD RECKONING)\nMV VASILIY GOLOVNIN\n[ PC4 | ${Number(position.speed_knots || 12.4).toFixed(1)} KN ]`
+          : `MV VASILIY GOLOVNIN\n[ POLAR CLASS 4 | ${Number(position.speed_knots || 12.4).toFixed(1)} KN ]`,
         font: "bold 13px 'JetBrains Mono', sans-serif",
         fillColor: Cesium.Color.WHITE,
         outlineColor: Cesium.Color.BLACK,
@@ -818,7 +1078,9 @@ function App() {
         verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
         horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
         showBackground: true,
-        backgroundColor: Cesium.Color.fromCssColorString("#c62828").withAlpha(0.92),
+        backgroundColor: position.estimated
+          ? Cesium.Color.fromCssColorString("#b45309").withAlpha(0.95)
+          : Cesium.Color.fromCssColorString("#c62828").withAlpha(0.92),
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
       },
     });
@@ -879,7 +1141,12 @@ function App() {
     }
     if (shipParts.label) {
       shipParts.label.position = localOffset(center, 0, 0, 75);
-      shipParts.label.label.text = `🚢 MV VASILIY GOLOVNIN\n[ POLAR CLASS 4 | ${Number(position.speed_knots || 12.4).toFixed(1)} KN ]`;
+      shipParts.label.label.text = position.estimated
+        ? `ESTIMATED POSITION (DEAD RECKONING)\nMV VASILIY GOLOVNIN\n[ PC4 | ${Number(position.speed_knots || 12.4).toFixed(1)} KN ]`
+        : `MV VASILIY GOLOVNIN\n[ POLAR CLASS 4 | ${Number(position.speed_knots || 12.4).toFixed(1)} KN ]`;
+      shipParts.label.label.backgroundColor = position.estimated
+        ? Cesium.Color.fromCssColorString("#b45309").withAlpha(0.95)
+        : Cesium.Color.fromCssColorString("#c62828").withAlpha(0.92);
     }
   }, [create3DShip, localOffset]);
 
@@ -902,155 +1169,341 @@ function App() {
       const bergId = berg.iceberg_id ?? berg.id ?? "ICB-GENERIC";
       const width = Number(berg.width_m) || 1200;
       const length = Number(berg.length_m) || 2000;
-      const freeboard = Number(berg.freeboard_m) || 45;
-      const draft = Number(berg.estimated_draft_m) || (freeboard * 6);
+      const freeboard = Number(berg.freeboard_m) || 35;
+      
+      const shapeClass = berg.shape_class || "UNKNOWN";
+      const normShape = normalizeShapeClass(shapeClass);
+
+      // Material properties and draft status per Steps 4 & 5
+      const {
+        hasDraft,
+        underwaterOpacity,
+        underwaterColorHex,
+        draftConfidence,
+        source
+      } = getIcebergMaterialProperties(berg);
+
+      const draft = hasDraft ? Number(berg.estimated_draft_m) : null;
+
+      // Sized strictly based on estimated underwater draft (larger draft = larger hazard standoff radius)
+      // Marine polar standard: standoff accounts for subsurface ram projections, underwater hydrodynamic keel drift, and capsize displacement
+      const baseStandOffM = hasDraft
+        ? Math.max(500, Math.round(draft * 5.0 + (Math.min(width, length) / 3)))
+        : Math.max(800, Math.round(Math.max(width, length) * 0.8));
+      const safeRadiusM = Math.round(baseStandOffM / 50) * 50; // rounded to 50m intervals
+      const safeDistLabel = safeRadiusM >= 1000
+        ? `Stay ${(safeRadiusM / 1000).toFixed(1)}km clear`
+        : `Stay ${safeRadiusM}m clear`;
 
       // Check if iceberg hazard zone intersects the navigation route
       const distToRoute = minDistanceToRouteKm(lat, lon, routePts);
-      const hazardRadiusKm = Math.max(10, (width + length) / 400 + 8);
-      const isOnRouteHazard = distToRoute <= hazardRadiusKm;
+      const isOnRouteHazard = distToRoute <= (safeRadiusM / 1000);
 
-      // Create irregular polygonal ring for realistic tabular/pinnacled iceberg shape
-      const numPoints = 12;
-      const points = [];
-      for (let i = 0; i < numPoints; i++) {
-        const angle = (i / numPoints) * Math.PI * 2;
-        const radiusNoise = 0.85 + 0.3 * Math.sin(i * 2.5);
-        const east = Math.cos(angle) * (width / 2) * radiusNoise;
-        const north = Math.sin(angle) * (length / 2) * radiusNoise;
-        const pt = offsetLatLon(lat, lon, east, north);
-        points.push(pt.lon, pt.lat);
-      }
+      // STEP 2 & 3: Extrude genuine irregular 2D outline (NOT a box, circle, or star)
+      const surfaceCoords = getScaledIcebergOutline(normShape, length, width, lat, lon, 1.0);
+      const underwaterScale = 0.85; // Keel tapers inward per Step 4
+      const underwaterCoords = getScaledIcebergOutline(normShape, length, width, lat, lon, underwaterScale);
 
-      // 3D Surface Iceberg Entity
-      const surfaceBerg = viewer.entities.add({
-        name: `${bergId} Surface`,
-        polygon: {
-          hierarchy: Cesium.Cartesian3.fromDegreesArray(points),
-          extrudedHeight: freeboard,
-          height: 0,
-          material: Cesium.Color.fromCssColorString("#e0f4ff").withAlpha(0.95),
-          outline: true,
-          outlineColor: Cesium.Color.fromCssColorString("#ffffff"),
-          shadows: Cesium.ShadowMode.ENABLED,
+      // 1. High-Visibility Semi-transparent Warning Zone Fill
+      const hazardZoneFill = viewer.entities.add({
+        name: `${bergId} Hazard Warning Fill`,
+        position: Cesium.Cartesian3.fromDegrees(lon, lat, 8.0),
+        ellipse: {
+          semiMajorAxis: safeRadiusM,
+          semiMinorAxis: safeRadiusM,
+          height: 8.0,
+          material: Cesium.Color.fromCssColorString("#C64B3F").withAlpha(0.28),
         },
       });
 
-      // 3D Subsurface Keel (X-Ray Mode)
-      if (xray) {
+      // Concentric inner high-danger core fill
+      const hazardInnerCore = viewer.entities.add({
+        name: `${bergId} Hazard Core Fill`,
+        position: Cesium.Cartesian3.fromDegrees(lon, lat, 8.5),
+        ellipse: {
+          semiMajorAxis: safeRadiusM * 0.55,
+          semiMinorAxis: safeRadiusM * 0.55,
+          height: 8.5,
+          material: Cesium.Color.fromCssColorString("#C64B3F").withAlpha(0.18),
+        },
+      });
+
+      // 2. Bold Dashed Red/Amber Perimeter Border Ring
+      const perimeterPoints = [];
+      const numRingPoints = 54;
+      for (let i = 0; i <= numRingPoints; i++) {
+        const ang = (i / numRingPoints) * Math.PI * 2;
+        const east = Math.cos(ang) * safeRadiusM;
+        const north = Math.sin(ang) * safeRadiusM;
+        const pt = offsetLatLon(lat, lon, east, north);
+        perimeterPoints.push(Cesium.Cartesian3.fromDegrees(pt.lon, pt.lat, 11.0));
+      }
+
+      const hazardZoneDashedBorder = viewer.entities.add({
+        name: `${bergId} Hazard Zone Dashed Border`,
+        polyline: {
+          positions: perimeterPoints,
+          width: 5.0,
+          material: new Cesium.PolylineDashMaterialProperty({
+            color: Cesium.Color.fromCssColorString("#C64B3F"),
+            gapColor: Cesium.Color.fromCssColorString("#D69A3E"),
+            dashLength: 28.0,
+          }),
+        },
+      });
+
+      const hazardZoneAccentBorder = viewer.entities.add({
+        name: `${bergId} Hazard Zone Accent Border`,
+        polyline: {
+          positions: perimeterPoints,
+          width: 1.5,
+          material: Cesium.Color.fromCssColorString("#D69A3E").withAlpha(0.75),
+        },
+      });
+
+      // 3. High-Contrast Warning Zone Safe-Distance Label positioned on the hazard perimeter rim
+      if (showIcebergLabelsRef.current) {
+        const rimPt = offsetLatLon(lat, lon, 0, -safeRadiusM);
+        const hazardPerimeterLabel = viewer.entities.add({
+          name: `${bergId} Safe Clearance Label`,
+          position: Cesium.Cartesian3.fromDegrees(rimPt.lon, rimPt.lat, 18.0),
+          label: {
+            text: `NO-GO: ${safeDistLabel}`,
+            font: "bold 12px 'JetBrains Mono', Consolas, monospace",
+            fillColor: Cesium.Color.fromCssColorString("#D8D8CE"),
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 4,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            showBackground: true,
+            backgroundColor: Cesium.Color.fromCssColorString("#C64B3F").withAlpha(0.92),
+            backgroundPadding: new Cesium.Cartesian2(8, 4),
+            verticalOrigin: Cesium.VerticalOrigin.TOP,
+            horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 200000),
+          },
+        });
+        icebergLabelRef.current.push(hazardPerimeterLabel);
+      }
+
+      // 4. SURFACE MESH: extrude the real outline upward by real freeboard_m
+      const surfaceBerg = viewer.entities.add({
+        name: `${bergId} Surface [${normShape}]`,
+        polygon: {
+          hierarchy: Cesium.Cartesian3.fromDegreesArray(surfaceCoords),
+          extrudedHeight: freeboard,
+          height: 0,
+          material: Cesium.Color.fromCssColorString("#eef7ff").withAlpha(0.96),
+          outline: true,
+          outlineColor: Cesium.Color.fromCssColorString("#ffffff").withAlpha(0.95),
+          shadows: Cesium.ShadowMode.ENABLED,
+        },
+      });
+      icebergLabelRef.current.push(surfaceBerg);
+
+      // 5. UNDERWATER KEEL: same outline scaled down by 0.85, extruded downward by estimated_draft_m
+      // If estimated_draft_m is null: skip creating underwater mesh entirely,
+      // and instead render a text label "Draft unknown" attached to the surface mesh if labels are enabled.
+      if (hasDraft) {
         const underwaterBerg = viewer.entities.add({
-          name: `${bergId} Subsurface Keel`,
+          name: `${bergId} Subsurface Keel [${normShape}]`,
           polygon: {
-            hierarchy: Cesium.Cartesian3.fromDegreesArray(points),
+            hierarchy: Cesium.Cartesian3.fromDegreesArray(underwaterCoords),
             extrudedHeight: 0,
             height: -draft,
-            material: Cesium.Color.fromCssColorString("#00e5ff").withAlpha(0.35),
+            material: Cesium.Color.fromCssColorString(underwaterColorHex).withAlpha(underwaterOpacity),
             outline: true,
-            outlineColor: Cesium.Color.fromCssColorString("#00e5ff").withAlpha(0.8),
+            outlineColor: Cesium.Color.fromCssColorString(underwaterColorHex).withAlpha(Math.min(0.95, underwaterOpacity + 0.25)),
           },
         });
         icebergLabelRef.current.push(underwaterBerg);
+      } else if (showIcebergLabelsRef.current) {
+        // Honesty-about-uncertainty rule: Visible label attached to surface mesh, no underwater mesh
+        const unknownDraftBadge = viewer.entities.add({
+          name: `${bergId} Draft Unknown Badge`,
+          position: Cesium.Cartesian3.fromDegrees(lon, lat, freeboard + 28),
+          label: {
+            text: "DRAFT UNKNOWN (NO SUB-SURFACE KEEL DATA)",
+            font: "bold 11px 'JetBrains Mono', Consolas, monospace",
+            fillColor: Cesium.Color.fromCssColorString("#C9A227"),
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 3,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            showBackground: true,
+            backgroundColor: Cesium.Color.fromCssColorString("#121614").withAlpha(0.92),
+            backgroundPadding: new Cesium.Cartesian2(8, 4),
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+        });
+        icebergLabelRef.current.push(unknownDraftBadge);
       }
 
       // If iceberg hazard zone encompasses the route, render distinct WHITE DOT Hazard Marker
       if (isOnRouteHazard) {
-        // 1. High-Visibility White Dot Point Marker
         const whiteDot = viewer.entities.add({
           name: `${bergId} Route Hazard White Dot`,
           position: Cesium.Cartesian3.fromDegrees(lon, lat, freeboard + 25),
           point: {
             pixelSize: 13,
             color: Cesium.Color.WHITE,
-            outlineColor: Cesium.Color.fromCssColorString("#00e5ff"),
+            outlineColor: Cesium.Color.fromCssColorString("#C64B3F"),
             outlineWidth: 3,
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
           },
         });
-
-        // 2. Luminous White Hazard Zone Buffer Ring
-        const whiteHazardRing = viewer.entities.add({
-          name: `${bergId} Hazard Zone Buffer Ring`,
-          position: Cesium.Cartesian3.fromDegrees(lon, lat, 4),
-          ellipse: {
-            semiMajorAxis: hazardRadiusKm * 1000,
-            semiMinorAxis: hazardRadiusKm * 1000,
-            material: Cesium.Color.WHITE.withAlpha(0.12),
-            outline: true,
-            outlineColor: Cesium.Color.WHITE.withAlpha(0.85),
-            outlineWidth: 2,
-          },
-        });
-
-        icebergLabelRef.current.push(whiteDot, whiteHazardRing);
+        icebergLabelRef.current.push(whiteDot);
       }
 
-      // Iceberg Label & Telemetry Badge
-      const label = viewer.entities.add({
-        name: `${bergId} Label`,
-        position: Cesium.Cartesian3.fromDegrees(lon, lat, freeboard + 95),
-        label: {
-          text: isOnRouteHazard 
-            ? `⚪ ${bergId} (ROUTE HAZARD)\nFREEBOARD: ${freeboard}m | DRAFT: ${draft}m`
-            : `🧊 ${bergId}\nFREEBOARD: ${freeboard}m | DRAFT: ${draft}m`,
-          font: "bold 11px 'JetBrains Mono', sans-serif",
-          fillColor: isOnRouteHazard ? Cesium.Color.WHITE : Cesium.Color.fromCssColorString("#e0f7fa"),
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 3,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-          showBackground: true,
-          backgroundColor: isOnRouteHazard
-            ? Cesium.Color.fromCssColorString("#b71c1c").withAlpha(0.92)
-            : Cesium.Color.fromCssColorString("#030e20").withAlpha(0.85),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-      });
+      // DRIFT FORECAST VECTOR & +12H PROJECTED LOCATION
+      const driftSpeed = Number(berg.drift_speed_knots ?? 0.8);
+      const driftDir = Number(berg.drift_direction_degrees ?? 48);
+      const driftDistKm = driftSpeed * 1.852 * 12; // 12 hours projection
+      const driftDistNm = (driftSpeed * 12).toFixed(1);
 
-      icebergLabelRef.current.push(surfaceBerg, label);
+      const rad = (driftDir * Math.PI) / 180;
+      const eastDriftM = driftDistKm * 1000 * Math.sin(rad);
+      const northDriftM = driftDistKm * 1000 * Math.cos(rad);
+      const projCoord = offsetLatLon(lat, lon, eastDriftM, northDriftM);
+
+      const driftLine = `\nDRIFT: ${driftSpeed.toFixed(1)}kn → ${Math.round(driftDir)}° (+12h: ${driftDistNm}NM)`;
+
+      // Iceberg Central Telemetry Label & Badge (only when showIcebergLabels is ON)
+      if (showIcebergLabelsRef.current) {
+        const labelText = !hasDraft
+          ? `${bergId} [${normShape}]\nFREEBOARD: ${freeboard}m | DRAFT: UNKNOWN\nSRC: ${source.toUpperCase()} | CONF: ${(draftConfidence * 100).toFixed(0)}%\nHAZARD ZONE: ${safeDistLabel}${driftLine}`
+          : `${bergId} [${normShape}]\nFREEBOARD: ${freeboard}m | DRAFT: ${draft}m\nSRC: ${source.toUpperCase()} | CONF: ${(draftConfidence * 100).toFixed(0)}%\nHAZARD ZONE: ${safeDistLabel}${driftLine}`;
+
+        const label = viewer.entities.add({
+          name: `${bergId} Label`,
+          position: Cesium.Cartesian3.fromDegrees(lon, lat, freeboard + 95),
+          label: {
+            text: labelText,
+            font: "bold 11px 'JetBrains Mono', sans-serif",
+            fillColor: isOnRouteHazard ? Cesium.Color.WHITE : Cesium.Color.fromCssColorString("#D8D8CE"),
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 3,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+            showBackground: true,
+            backgroundColor: isOnRouteHazard
+              ? Cesium.Color.fromCssColorString("#C64B3F").withAlpha(0.92)
+              : Cesium.Color.fromCssColorString("#121614").withAlpha(0.90),
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+        });
+        icebergLabelRef.current.push(label);
+      }
+
+      icebergLabelRef.current.push(
+        hazardZoneFill,
+        hazardInnerCore,
+        hazardZoneDashedBorder,
+        hazardZoneAccentBorder
+      );
+
+      // Render 3D Drift Vector Line and +12h Predicted Marker on Globe (always visible when drift is enabled)
+      if (showDriftForecastRef.current) {
+        const driftVector = viewer.entities.add({
+          name: `${bergId} Drift Vector (+12h)`,
+          polyline: {
+            positions: [
+              Cesium.Cartesian3.fromDegrees(lon, lat, 14.0),
+              Cesium.Cartesian3.fromDegrees(projCoord.lon, projCoord.lat, 14.0)
+            ],
+            width: 3.5,
+            material: new Cesium.PolylineDashMaterialProperty({
+              color: Cesium.Color.fromCssColorString("#00e5ff"),
+              gapColor: Cesium.Color.fromCssColorString("#003854"),
+              dashLength: 16.0
+            })
+          }
+        });
+
+        const projMarkerConfig = {
+          name: `${bergId} Projected +12h Position`,
+          position: Cesium.Cartesian3.fromDegrees(projCoord.lon, projCoord.lat, 16.0),
+          point: {
+            pixelSize: 10,
+            color: Cesium.Color.fromCssColorString("#00e5ff"),
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 2,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY
+          }
+        };
+
+        // Text box on the projected 12h marker only shown if labels are ON
+        if (showIcebergLabelsRef.current) {
+          projMarkerConfig.label = {
+            text: `${bergId} (+12h FORECAST)\nDRIFT: ${driftSpeed.toFixed(1)}kn @ ${Math.round(driftDir)}° (+${driftDistNm} NM)`,
+            font: "bold 10px 'JetBrains Mono', Consolas, monospace",
+            fillColor: Cesium.Color.fromCssColorString("#80f3ff"),
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 3,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            showBackground: true,
+            backgroundColor: Cesium.Color.fromCssColorString("#021727").withAlpha(0.88),
+            backgroundPadding: new Cesium.Cartesian2(6, 3),
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 160000)
+          };
+        }
+
+        const projMarker = viewer.entities.add(projMarkerConfig);
+        icebergLabelRef.current.push(driftVector, projMarker);
+      }
     });
   }, [offsetLatLon]);
 
   // Render Planned Route & Danger Corridors (with smooth Iceberg Deterrence Fairway)
-  const renderRoutes = useCallback((viewer, icebergs) => {
+  const renderRoutes = useCallback((viewer, icebergs, customRoute) => {
     if (!viewer) return;
     routeEntitiesRef.current.forEach((e) => viewer.entities.remove(e));
     routeEntitiesRef.current = [];
 
-    const waypoints = [
+    const defaultWaypoints = [
       { lon: -62.00, lat: -62.90 }, // WP-1: Bransfield Deep Ocean Southwest
       { lon: -61.20, lat: -62.86 }, // WP-2: Bransfield Central Channel
       { lon: -60.50, lat: -62.83 }, // WP-3: North of Deception Island / Deep Fairway
       { lon: -60.00, lat: -62.77 }, // WP-4: Bransfield Open Fairway South of Hurd
-      { lon: -59.78, lat: -62.72 }, // WP-5: Open Water Fairway Approach to ICB-2026-A23A
+      { lon: -59.78, lat: -62.75 }, // WP-5: Bransfield Fairway Clear of A23A Standoff
       { lon: -59.35, lat: -62.78 }, // WP-6: Deep Ocean Fairway South of Robert Island
       { lon: -58.20, lat: -62.88 }  // WP-7: Antarctic Sound Deep Water Approach
     ];
+
+    const activePts = customRoute?.points || activeRouteRef.current?.points;
+    const waypoints = (activePts && activePts.length >= 2)
+      ? activePts.map((p) => ({ lon: Number(p.longitude ?? p.lon), lat: Number(p.latitude ?? p.lat) }))
+      : defaultWaypoints;
 
     const wpPoints = waypoints.map((w) => ({ latitude: w.lat, longitude: w.lon }));
     const icebergsToUse = icebergs || allIcebergsRef.current || FALLBACK_ICEBERGS;
 
     // Sample finely along route so the fairway dynamically bends around on-route icebergs with silky-smooth continuity
     const sampledPositions = [];
-    const numSamples = 200;
+    const numSamples = 250;
     for (let s = 0; s <= numSamples; s++) {
       const prog = s / numSamples;
       const pState = getRouteProgressState(wpPoints, prog, icebergsToUse);
       if (pState) {
-        sampledPositions.push(Cesium.Cartesian3.fromDegrees(pState.lon, pState.lat, 10));
+        sampledPositions.push(Cesium.Cartesian3.fromDegrees(pState.lon, pState.lat, 14));
       }
     }
 
     const polyline = viewer.entities.add({
-      name: "Optimal Antarctic Navigation Corridor (Tactical Avoidance Fairway)",
+      name: "Optimal Antarctic Navigation Corridor (Hard No-Go Standoff Fairway)",
       polyline: {
         positions: sampledPositions,
         width: 5,
         material: new Cesium.PolylineGlowMaterialProperty({
-          glowPower: 0.3,
-          color: Cesium.Color.fromCssColorString("#69f0ae"),
+          glowPower: 0.25,
+          color: Cesium.Color.fromCssColorString("#A63D82"),
         }),
-        clampToGround: true,
+        clampToGround: false,
       },
     });
 
@@ -1062,14 +1515,14 @@ function App() {
         position: Cesium.Cartesian3.fromDegrees(wp.lon, wp.lat, 20),
         point: {
           pixelSize: 8,
-          color: Cesium.Color.fromCssColorString("#69f0ae"),
+          color: Cesium.Color.fromCssColorString("#A63D82"),
           outlineColor: Cesium.Color.BLACK,
           outlineWidth: 2,
         },
         label: {
           text: `WP-${idx + 1}`,
-          font: "10px 'JetBrains Mono'",
-          fillColor: Cesium.Color.fromCssColorString("#69f0ae"),
+          font: "bold 11px 'JetBrains Mono', Consolas, monospace",
+          fillColor: Cesium.Color.fromCssColorString("#D8D8CE"),
           verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
           pixelOffset: new Cesium.Cartesian2(0, -10),
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
@@ -1102,6 +1555,13 @@ function App() {
     if (viewer) {
       update3DShip(viewer, formattedShip);
     }
+
+    // Throttle heavy CPU iceberg proximity and CPA calculations to once every 1000ms
+    const nowMs = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+    if (nowMs - lastHazardCheckRef.current < 1000) {
+      return;
+    }
+    lastHazardCheckRef.current = nowMs;
 
     // Calculate Logical Proximity Alert & Approaching Hazard Intercepts
     const currentSpeedKnots = formattedShip.speed_knots || 13.5;
@@ -1190,9 +1650,9 @@ function App() {
       const detOff = formattedShip.deterOffsetKm || 3.2;
       const detDir = formattedShip.deterDirection || "STARBOARD";
       if (isDet) {
-        setRouteStatus(`⚠️ AVOIDANCE ACTIVE: DETERRING +${detOff.toFixed(1)}km ${detDir} FROM ${activeThreat.id} (ETA ${activeThreat._formattedETA})`);
+        setRouteStatus(`AVOIDANCE ACTIVE: DETERRING +${detOff.toFixed(1)}km ${detDir} FROM ${activeThreat.id} (ETA ${activeThreat._formattedETA})`);
       } else {
-        setRouteStatus(`⚠️ WARNING: ${activeThreat.id} AHEAD IN ${activeThreat._formattedETA} (${activeThreat._distAheadKm.toFixed(1)}km)`);
+        setRouteStatus(`WARNING: ${activeThreat.id} AHEAD IN ${activeThreat._formattedETA} (${activeThreat._distAheadKm.toFixed(1)}km)`);
       }
     } else {
       setAlertETA(null);
@@ -1236,13 +1696,13 @@ function App() {
       }
 
       const fePolyline = viewer.entities.add({
-        name: `Fuel-Efficient Route (${feRoute.distance_km} km) with Iceberg Avoidance`,
+        name: `Recommended Fuel-Efficient Route (${feRoute.distance_km} km) with Iceberg Avoidance`,
         polyline: {
           positions: sampledPositions,
           width: 5,
           material: new Cesium.PolylineGlowMaterialProperty({
-            glowPower: 0.35,
-            color: Cesium.Color.fromCssColorString("#69f0ae"),
+            glowPower: 0.25,
+            color: Cesium.Color.fromCssColorString("#A63D82"),
           }),
           clampToGround: true,
         },
@@ -1253,8 +1713,9 @@ function App() {
       feRoute.points.forEach((pt, idx) => {
         const isStart = idx === 0;
         const isDest = idx === feRoute.points.length - 1;
-        const labelText = isStart ? "🟢 START" : isDest ? "🏁 DESTINATION" : `WP-${idx}`;
-        const pinColor = isStart ? "#69f0ae" : isDest ? "#ffd740" : "#00e5ff";
+        const labelText = isStart ? "START" : isDest ? "DESTINATION" : `WP-${idx}`;
+        const pinColor = isStart ? "#5B9B6F" : isDest ? "#C9A227" : "#A63D82";
+        const labelColor = isStart ? "#5B9B6F" : isDest ? "#C9A227" : "#D8D8CE";
 
         const pin = viewer.entities.add({
           position: Cesium.Cartesian3.fromDegrees(pt.longitude, pt.latitude, 20),
@@ -1267,7 +1728,7 @@ function App() {
           label: {
             text: labelText,
             font: "bold 11px 'JetBrains Mono', sans-serif",
-            fillColor: Cesium.Color.fromCssColorString(pinColor),
+            fillColor: Cesium.Color.fromCssColorString(labelColor),
             outlineColor: Cesium.Color.BLACK,
             outlineWidth: 3,
             style: Cesium.LabelStyle.FILL_AND_OUTLINE,
@@ -1302,7 +1763,7 @@ function App() {
       render3DIcebergs(viewer, allIcebergsRef.current, xrayMode, feRoute);
     }
 
-    // 2. Render Standard Direct Route (Dashed / Thin Cyan Line for visual comparison)
+    // 2. Render Standard Direct Route (ECDIS Magenta Dashed Line for visual comparison)
     if (stdRoute && Array.isArray(stdRoute.points) && stdRoute.points.length > 0) {
       const stdPositions = stdRoute.points.map((p) => Cesium.Cartesian3.fromDegrees(p.longitude, p.latitude, 10));
 
@@ -1312,7 +1773,7 @@ function App() {
           positions: stdPositions,
           width: 3,
           material: new Cesium.PolylineDashMaterialProperty({
-            color: Cesium.Color.fromCssColorString("#4fc3f7").withAlpha(0.65),
+            color: Cesium.Color.fromCssColorString("#A63D82"),
             dashLength: 16.0,
           }),
           clampToGround: true,
@@ -1443,6 +1904,22 @@ function App() {
   const handleToggleFollowCamera = useCallback(() => {
     setFollowShipCamera((prev) => !prev);
   }, []);
+
+  const handleCloseLeftSidebar = useCallback(() => {
+    setIsLeftSidebarOpen(false);
+  }, []);
+
+  const handleCloseRightSidebar = useCallback(() => {
+    setIsRightSidebarOpen(false);
+  }, []);
+
+  const handleTogglePlayVoyage = useCallback(() => {
+    if (isVoyagingRef.current) {
+      handlePauseVoyage();
+    } else {
+      handleStartVoyage();
+    }
+  }, [handlePauseVoyage, handleStartVoyage]);
 
   // Voyage Transit Animation Loop
   useEffect(() => {
@@ -1619,13 +2096,22 @@ function App() {
           console.warn("World Terrain async init fallback to default terrain:", terrErr);
         }
 
-        // Configure realistic 3D Globe environment
+        // Configure realistic 3D Globe environment (ECDIS deep water #0A0D0C)
         const globe = viewer.scene.globe;
+        globe.baseColor = Cesium.Color.fromCssColorString("#0A0D0C");
+        viewer.scene.backgroundColor = Cesium.Color.fromCssColorString("#0A0D0C");
         globe.enableLighting = true;
         globe.terrainExaggeration = terrainExaggeration;
         globe.depthTestAgainstTerrain = true;
         globe.showGroundAtmosphere = true;
         globe.oceanNormalMapUrl = Cesium.buildModuleUrl("Assets/Textures/waterNormals.jpg");
+
+        // Subsurface Translucency for Underwater Iceberg Keel visibility
+        if (globe.translucency) {
+          globe.translucency.enabled = true;
+          globe.translucency.frontFaceAlpha = 0.72;
+          globe.translucency.backFaceAlpha = 1.0;
+        }
 
         // High Dynamic Range & Atmosphere
         viewer.scene.highDynamicRange = true;
@@ -1684,15 +2170,19 @@ function App() {
 
         await loadBackendData();
 
-        // Connect WebSocket for live NMEA telemetry (only overrides if user pauses voyage)
+        // Connect WebSocket for live NMEA telemetry (wrapped by dead-reckoning tracker)
+        const wrappedNmeaHandler = onRealPositionUpdate((data) => {
+          if (!isVoyagingRef.current) {
+            updateShip(data);
+          }
+        });
+
         try {
           websocket = new WebSocket(WS_URL);
           websocket.onmessage = (event) => {
             try {
-              if (!isVoyagingRef.current) {
-                const data = JSON.parse(event.data);
-                updateShip(data);
-              }
+              const data = JSON.parse(event.data);
+              wrappedNmeaHandler(data);
             } catch (err) {}
           };
         } catch (err) {}
@@ -1742,12 +2232,17 @@ function App() {
     }
   }, [enableShadows]);
 
-  // Update X-ray rendering
+  // Update X-ray rendering, Iceberg Drift Forecast Vectors & Information Labels
   useEffect(() => {
+    showDriftForecastRef.current = showDriftForecast;
+    showIcebergLabelsRef.current = showIcebergLabels;
     if (viewerRef.current) {
-      render3DIcebergs(viewerRef.current, allIcebergsRef.current, xrayMode);
+      if (viewerRef.current.scene?.globe?.translucency) {
+        viewerRef.current.scene.globe.translucency.frontFaceAlpha = xrayMode ? 0.38 : 0.72;
+      }
+      render3DIcebergs(viewerRef.current, allIcebergsRef.current, xrayMode, activeRouteRef.current);
     }
-  }, [xrayMode, render3DIcebergs]);
+  }, [xrayMode, showDriftForecast, showIcebergLabels, render3DIcebergs]);
 
   // Handle smooth auto-orbit turntable
   useEffect(() => {
@@ -1769,252 +2264,392 @@ function App() {
   }, [isAutoOrbiting]);
 
   return (
-    <div className="app">
-      <div ref={cesiumContainer} className="cesium-container" />
+    <div className={`app ${isDayMode ? "day-mode" : "night-mode"}`}>
+      {/* 1. Global Top Bar (Matching Reference Image Header) */}
+      <header className="maritime-topbar">
+        {/* Topbar Left: Ship Info Toggle & Day/Night Pill */}
+        <div className="topbar-left">
+          <button
+            className={`topbar-toggle-btn ${isLeftSidebarOpen ? "active" : ""}`}
+            onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
+            id="btn-toggle-ship-info"
+            title="Toggle Ship Information & Route Planning Sidebar"
+          >
+            <span>☰</span>
+            <span>SHIP INFO</span>
+          </button>
 
-      {/* Top Left Title Bar */}
-      <div className="title-panel glass">
-        <div className="title-row">
-          <span className="live-indicator-dot" />
-          <h1>ANTARCTIC 3D TERRAIN INTELLIGENCE</h1>
-        </div>
-        <p>Dynamic Elevation Relief & Decision Support Engine</p>
-      </div>
-
-      {/* Quick Camera Preset Switcher (Top Center) */}
-      <div className="preset-bar glass">
-        <button
-          className={`preset-btn ${activePreset === "ship" ? "active" : ""}`}
-          onClick={() => applyCameraPreset("ship")}
-          title="Cinematic 3D Third-Person Focus on MV Vasiliy Golovnin"
-        >
-          🎯 Focus Ship
-        </button>
-        <button
-          className={`preset-btn ${activePreset === "antarctica" ? "active" : ""}`}
-          onClick={() => applyCameraPreset("antarctica")}
-          title="Whole Continent 3D Overview"
-        >
-          🇦🇶 Whole Antarctica
-        </button>
-        <button
-          className={`preset-btn ${activePreset === "earth" ? "active" : ""}`}
-          onClick={() => applyCameraPreset("earth")}
-          title="Global Earth in Space"
-        >
-          🌍 Global Earth
-        </button>
-      </div>
-
-      {/* Tactical Early Warning & Course Deterrence Overlay Banner */}
-      {activeAlertIceberg && alertETA && (
-        <div className="top-early-warning-banner glass pulse-warning-glow">
-          <div className="banner-pulse-icon">🚨</div>
-          <div className="banner-content">
-            <div className="banner-title-line">
-              <span className="banner-badge">⚠️ WARNING: ICEBERG NEARBY AHEAD</span>
-              <span className="banner-heading">
-                INTERCEPT IN {alertETA.formattedETA || `${Math.round(alertETA.hours * 60)} MIN`} ({alertETA.distanceKm.toFixed(1)} KM)
-              </span>
-            </div>
-            <div className="banner-detail-line">
-              <span>TARGET: <strong>{activeAlertIceberg.id}</strong> ({activeAlertIceberg.shape_class?.toUpperCase() || "TABULAR"})</span>
-              <span className="banner-sep">•</span>
-              {isDeterring ? (
-                <span className="banner-deterring-text">
-                  ⚡ <strong>COURSE DETERRENCE ACTIVE:</strong> VEERING +{deterOffsetKm.toFixed(1)} KM {deterDirection} TO DETOUR AROUND HAZARD
-                </span>
-              ) : (
-                <span className="banner-standby-text">
-                  🛡️ <strong>STATUS:</strong> TACTICAL AVOIDANCE VECTOR CALCULATED & ARMED
-                </span>
-              )}
-            </div>
+          {/* Day / Night Mode Toggle Pill (Matching Reference Image) */}
+          <div
+            className="day-night-toggle-pill"
+            onClick={() => setIsDayMode(!isDayMode)}
+            title="Toggle Day / Night Mode"
+          >
+            <div className={`dn-icon ${!isDayMode ? "active" : ""}`}>NIGHT</div>
+            <div className={`dn-icon ${isDayMode ? "active" : ""}`}>DAY</div>
           </div>
         </div>
-      )}
 
-      {/* Quick Navigation Floating Toolbar (Zoom +, Zoom -, Tilt 3D, Center Ship) */}
-      <div className="quick-nav-toolbar glass">
-        <button className="nav-tool-btn" onClick={handleZoomIn} title="Zoom In (+)">
-          ➕
-        </button>
-        <button className="nav-tool-btn" onClick={handleZoomOut} title="Zoom Out (-)">
-          ➖
-        </button>
-        <button className="nav-tool-btn" onClick={handleTiltToggle} title="Toggle 3D Elevation Tilt">
-          📐 3D
-        </button>
-        <button className="nav-tool-btn" onClick={() => applyCameraPreset("ship")} title="Center on Vessel">
-          🎯
-        </button>
-      </div>
-
-      {/* "Click & Hold to Rotate" Reference UI Badge (Center bottom) */}
-      {showHintBadge && (
-        <div className="rotate-hint-badge" onClick={() => setShowHintBadge(false)}>
-          <div className="hand-icon-anim">👆</div>
-          <div className="hint-text">
-            <strong>click & hold</strong>
-            <span>to rotate 3D view</span>
+        {/* Topbar Center: Live UTC DateTime & Vessel Coordinates (Matching Reference Image) */}
+        <div className="topbar-center">
+          <div className="telemetry-tag-group">
+            <span className="lbl">TIME:</span>
+            <span className="val">
+              {utcClock.toISOString().replace("T", " ").substring(0, 19)} UTC
+            </span>
+          </div>
+          <div className="telemetry-tag-group">
+            <span className="lbl">POS:</span>
+            <span className="val">
+              {Math.abs(ship?.lat ?? -62.8259).toFixed(4)}°S{" "}
+              {Math.abs(ship?.lon ?? -60.4660).toFixed(4)}°W
+            </span>
           </div>
         </div>
-      )}
 
-      {/* 3D Visual Studio HUD (Bottom Left) */}
-      <div className={`visual-studio-panel glass ${isPanelCollapsed ? "collapsed" : ""}`}>
-        <div className="studio-header" onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}>
-          <span className="studio-title">⚙️ 3D VISUAL STUDIO & ELEVATION</span>
-          <button className="collapse-btn">{isPanelCollapsed ? "▲ Expand" : "▼ Collapse"}</button>
+        {/* Topbar Right: Layer Pills, Hazard Sidebar Toggle, Dashboard View Switcher */}
+        <div className="topbar-right">
+          {viewMode === "map" && (
+            <div className="topbar-layer-pills">
+              <button
+                className={`layer-pill-btn ${activeBaseLayer === "arcgis_satellite" ? "active" : ""}`}
+                onClick={() => setBaseImageryLayer("arcgis_satellite")}
+              >
+                SATELLITE
+              </button>
+              <button
+                className={`layer-pill-btn ${activeBaseLayer === "relief_topo" ? "active" : ""}`}
+                onClick={() => setBaseImageryLayer("relief_topo")}
+              >
+                3D RELIEF
+              </button>
+              <button
+                className={`layer-pill-btn ${activeBaseLayer === "nasa_gibs" ? "active" : ""}`}
+                onClick={() => setBaseImageryLayer("nasa_gibs")}
+              >
+                ICE CONC
+              </button>
+              <button
+                className={`layer-pill-btn ${xrayMode ? "active" : ""}`}
+                onClick={() => setXrayMode(!xrayMode)}
+                title="Toggle Sub-surface Keels X-Ray Transparency"
+                id="btn-toggle-xray-keels"
+              >
+                X-RAY KEELS: {xrayMode ? "ON" : "OFF"}
+              </button>
+              <button
+                className={`layer-pill-btn ${showDriftForecast ? "active" : ""}`}
+                onClick={() => setShowDriftForecast(!showDriftForecast)}
+                title="Toggle Iceberg Drift Prediction Vectors (+12h Horizon)"
+                id="btn-toggle-drift-vectors"
+              >
+                DRIFT VECTORS: {showDriftForecast ? "ON" : "OFF"}
+              </button>
+              <button
+                className={`layer-pill-btn ${showIcebergLabels ? "active" : ""}`}
+                onClick={() => setShowIcebergLabels(!showIcebergLabels)}
+                title="Toggle Iceberg Information Text Blocks & Telemetry Labels"
+                id="btn-toggle-iceberg-labels"
+              >
+                INFO BOXES: {showIcebergLabels ? "ON" : "OFF"}
+              </button>
+              <button
+                className="layer-pill-btn"
+                onClick={() => setIsVoyageBundleOpen(true)}
+                title="Pre-Departure Offline Voyage Bundle Downloader"
+                id="btn-open-voyage-bundle"
+              >
+                VOYAGE BUNDLE
+              </button>
+            </div>
+          )}
+
+          {viewMode === "map" && (
+            <>
+              <button
+                className={`topbar-toggle-btn forecast-toggle-btn ${isForecastModalOpen ? "active" : ""}`}
+                onClick={() => setIsForecastModalOpen(!isForecastModalOpen)}
+                id="btn-toggle-forecast"
+                title="Toggle 48-Hour Environmental & Route Forward Forecast"
+              >
+                <span>48H FORECAST</span>
+              </button>
+
+              <button
+                className={`topbar-toggle-btn ${isRightSidebarOpen ? "active" : ""} ${
+                  activeAlertIceberg ? "alert-active" : ""
+                }`}
+                onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+                id="btn-toggle-weather-hazard"
+                title="Toggle Weather, Ice & Hazard Sidebar"
+              >
+                <span>WEATHER & HAZARDS</span>
+              </button>
+            </>
+          )}
+
+          {/* View Switcher: Map vs Dashboard */}
+          <button
+            className="btn-dashboard-view"
+            onClick={() => setViewMode(viewMode === "map" ? "dashboard" : "map")}
+            id="btn-view-toggle"
+          >
+            <span>{viewMode === "map" ? "DASHBOARD" : "MAP VIEW"}</span>
+          </button>
         </div>
+      </header>
 
-        {!isPanelCollapsed && (
-          <div className="studio-body">
-            {/* Imagery Base Layer Selector */}
-            <div className="studio-section">
-              <label className="section-label">MAP TEXTURE & IMAGERY</label>
-              <div className="layer-grid">
-                <button
-                  className={`layer-btn ${activeBaseLayer === "arcgis_satellite" ? "active" : ""}`}
-                  onClick={() => setBaseImageryLayer("arcgis_satellite")}
-                >
-                  🛰️ True Satellite
-                </button>
-                <button
-                  className={`layer-btn ${activeBaseLayer === "relief_topo" ? "active" : ""}`}
-                  onClick={() => setBaseImageryLayer("relief_topo")}
-                >
-                  🏔️ 3D Hillshade
-                </button>
-                <button
-                  className={`layer-btn ${activeBaseLayer === "nasa_gibs" ? "active" : ""}`}
-                  onClick={() => setBaseImageryLayer("nasa_gibs")}
-                >
-                  ❄️ NASA Polar
-                </button>
-                <button
-                  className={`layer-btn ${activeBaseLayer === "dark_tactical" ? "active" : ""}`}
-                  onClick={() => setBaseImageryLayer("dark_tactical")}
-                >
-                  🌌 Dark Tactical
-                </button>
-              </div>
-            </div>
-
-            {/* 3D Relief Exaggeration Slider */}
-            <div className="studio-section">
-              <div className="slider-label-row">
-                <span className="section-label">3D TERRAIN RELIEF</span>
-                <span className="slider-val">{terrainExaggeration.toFixed(1)}x</span>
-              </div>
-              <input
-                type="range"
-                min="1.0"
-                max="4.5"
-                step="0.1"
-                value={terrainExaggeration}
-                onChange={(e) => setTerrainExaggeration(parseFloat(e.target.value))}
-                className="studio-slider"
-              />
-            </div>
-
-            {/* Sun Angle / Shadow Direction Slider */}
-            <div className="studio-section">
-              <div className="slider-label-row">
-                <span className="section-label">POLAR SUNLIGHT & SHADOWS</span>
-                <span className="slider-val">{Math.floor(sunHour)}:{Math.floor((sunHour % 1) * 60).toString().padStart(2, "0")} UTC</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="23.9"
-                step="0.25"
-                value={sunHour}
-                onChange={(e) => updateSunTime(parseFloat(e.target.value))}
-                className="studio-slider"
-              />
-            </div>
-
-            {/* Quick Feature Toggles */}
-            <div className="studio-toggles">
-              <button
-                className={`toggle-pill ${isAutoOrbiting ? "active" : ""}`}
-                onClick={() => setIsAutoOrbiting(!isAutoOrbiting)}
-              >
-                🔄 {isAutoOrbiting ? "Stop Orbit" : "Auto Orbit"}
-              </button>
-              <button
-                className={`toggle-pill ${enableShadows ? "active" : ""}`}
-                onClick={() => setEnableShadows(!enableShadows)}
-              >
-                🌑 {enableShadows ? "Shadows ON" : "Shadows OFF"}
-              </button>
-              <button
-                className={`toggle-pill ${enableAtmosphere ? "active" : ""}`}
-                onClick={() => setEnableAtmosphere(!enableAtmosphere)}
-              >
-                ✨ {enableAtmosphere ? "Atmosphere" : "No Atmos"}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Fuel-Efficient Route Planner Widget (Top Left below Title) */}
-      <RoutePlanner
-        shipPosition={ship}
-        onRouteCalculated={handleCustomRouteCalculated}
-        backendUrl={BACKEND}
-        onStartVoyage={handleStartVoyage}
-        isVoyaging={isVoyaging}
-        onPauseVoyage={handlePauseVoyage}
+      {/* 2. Cesium Container (always preserved in DOM so WebGL context is never destroyed) */}
+      <div
+        ref={cesiumContainer}
+        className="cesium-container"
+        style={{ display: viewMode === "map" ? "block" : "none" }}
       />
 
-      {/* Right Telemetry & Hazard Panel */}
-      <HazardPanel
-        ship={ship}
-        gpsFix={gpsFix}
-        distanceKm={distanceKm}
-        routeStatus={routeStatus}
-        nearbyIcebergs={nearbyIcebergs}
-        closestIcebergId={closestIcebergId}
-        activeAlertIceberg={activeAlertIceberg}
-        alertETA={alertETA}
-        routeHazardIcebergs={routeHazardIcebergs}
-        isDeterring={isDeterring}
-        deterOffsetKm={deterOffsetKm}
-        deterDirection={deterDirection}
-        deterTarget={deterTarget}
-      />
-
-      {/* Floating Active Voyage HUD (Bottom Center) */}
-      <VoyageHUD
-        activeRoute={activeRoute}
-        isVoyaging={isVoyaging}
-        voyageProgress={voyageProgress}
-        speedMultiplier={voyageSpeed}
-        followCamera={followShipCamera}
-        currentSpeedKnots={ship?.speed_knots ?? 14.5}
-        currentHeading={ship?.heading ?? 125}
-        currentLeg={voyageLeg}
-        remainingDistKm={remainingDistKm}
-        activeAlertIceberg={activeAlertIceberg}
-        alertETA={alertETA}
-        isDeterring={isDeterring}
-        deterOffsetKm={deterOffsetKm}
-        deterDirection={deterDirection}
-        onTogglePlay={() => {
-          if (isVoyaging) {
-            handlePauseVoyage();
-          } else {
+      {/* 3. Mission Dashboard View Screen */}
+      {viewMode === "dashboard" && (
+        <MissionDashboard
+          ship={ship}
+          gpsFix={gpsFix}
+          allIcebergs={nearbyIcebergs}
+          activeAlertIceberg={activeAlertIceberg}
+          alertETA={alertETA}
+          activeRoute={activeRoute}
+          onSwitchToMap={() => setViewMode("map")}
+          onStartVoyage={(route) => {
+            if (route) handleCustomRouteCalculated(route);
+            setViewMode("map");
             handleStartVoyage();
-          }
-        }}
-        onReset={handleResetVoyage}
-        onProgressScrub={handleProgressScrub}
-        onSetSpeed={handleSetVoyageSpeed}
-        onToggleFollowCamera={handleToggleFollowCamera}
-      />
+          }}
+          backendUrl={BACKEND}
+        />
+      )}
+
+      {/* 4. Map View UI: Spacious, Uncluttered, Pure Focus on Map with Collapsible Sidebars */}
+      {viewMode === "map" && (
+        <>
+          {/* Edge Toggle Handle Tabs (Click to open sidebar if closed) */}
+          {!isLeftSidebarOpen && (
+            <button
+              className="edge-toggle-tab left-tab"
+              onClick={() => setIsLeftSidebarOpen(true)}
+              title="Open Ship Info Sidebar"
+              id="edge-tab-left"
+            >
+              <span>›</span>
+              <span className="tab-txt">SHIP INFO</span>
+            </button>
+          )}
+
+          {!isRightSidebarOpen && (
+            <button
+              className="edge-toggle-tab right-tab"
+              onClick={() => setIsRightSidebarOpen(true)}
+              title="Open Weather & Hazard Sidebar"
+              id="edge-tab-right"
+            >
+              <span>‹</span>
+              <span className="tab-txt">WEATHER</span>
+            </button>
+          )}
+
+          {/* Left Collapsible Sidebar: "Ship Info." (Matching Reference Image) */}
+          <ShipInfoSidebar
+            isOpen={isLeftSidebarOpen}
+            onClose={handleCloseLeftSidebar}
+            ship={ship}
+            gpsFix={gpsFix}
+            activeRoute={activeRoute}
+            isVoyaging={isVoyaging}
+            voyageProgress={voyageProgress}
+            speedMultiplier={voyageSpeed}
+            followCamera={followShipCamera}
+            voyageLeg={voyageLeg}
+            remainingDistKm={remainingDistKm}
+            onTogglePlay={handleTogglePlayVoyage}
+            onReset={handleResetVoyage}
+            onProgressScrub={handleProgressScrub}
+            onSetSpeed={handleSetVoyageSpeed}
+            onToggleFollowCamera={handleToggleFollowCamera}
+            onRouteCalculated={handleCustomRouteCalculated}
+            vesselMetrics={realtimeVessel}
+            riskMetrics={realtimeRisk}
+            routeMetrics={realtimeRouteStats}
+            backendUrl={BACKEND}
+          />
+
+          {/* Right Collapsible Sidebar: "Weather & Hazard Info." (Matching Reference Image) */}
+          <WeatherHazardSidebar
+            isOpen={isRightSidebarOpen}
+            onClose={handleCloseRightSidebar}
+            ship={ship}
+            nearbyIcebergs={nearbyIcebergs}
+            closestIcebergId={closestIcebergId}
+            activeAlertIceberg={activeAlertIceberg}
+            alertETA={alertETA}
+            routeHazardIcebergs={routeHazardIcebergs}
+            isDeterring={isDeterring}
+            deterOffsetKm={deterOffsetKm}
+            deterDirection={deterDirection}
+            deterTarget={deterTarget}
+            distanceKm={distanceKm}
+            routeStatus={routeStatus}
+            windSpeedKnots={realtimeWeather?.windSpeedKnots ?? 20.6}
+            windDirectionDeg={realtimeWeather?.windDirectionDeg ?? 287}
+            gustKnots={realtimeWeather?.gustKnots ?? 27.8}
+            waveHeightMeters={realtimeWeather?.waveHeightMeters ?? 4.9}
+            swellPeriodSeconds={realtimeWeather?.swellPeriodSeconds ?? 7.8}
+            seaIceConcentration={realtimeRisk?.sic != null ? Math.round(realtimeRisk.sic * 1000) / 10 : 12.0}
+            iceThicknessMeters={realtimeRisk?.sitMeters ?? 0.5}
+            wmoZone={realtimeRisk?.wmoZone ?? "SAFE"}
+            operationalRisk={realtimeRisk?.operationalRisk ?? "SAFE"}
+            weatherSource={realtimeWeather?.source ?? "ERA5_ECMWF_GLORYS12V1"}
+            forecast48h={forecast48h}
+            onOpenForecastModal={() => setIsForecastModalOpen(true)}
+            showDriftForecast={showDriftForecast}
+            onToggleDriftForecast={() => setShowDriftForecast(!showDriftForecast)}
+          />
+
+          {/* Interactive 48-Hour Route Forecast Floating Modal Overlay */}
+          {isForecastModalOpen && (
+            <div className="forecast-modal-backdrop" onClick={() => setIsForecastModalOpen(false)}>
+              <div className="forecast-modal-container" onClick={(e) => e.stopPropagation()}>
+                <div className="forecast-modal-header">
+                  <div className="forecast-modal-header-left">
+                    <span className="forecast-modal-badge">48H FORWARD MODEL</span>
+                    <h3 className="forecast-modal-title">48-HOUR ENVIRONMENTAL &amp; SEA-ICE ROUTE FORECAST</h3>
+                    <span className="forecast-source-chip">ECMWF ERA5 + COPERNICUS GLORYS12V1</span>
+                  </div>
+                  <div className="forecast-modal-header-right">
+                    <button
+                      className="btn-modal-dashboard-link"
+                      onClick={() => {
+                        setIsForecastModalOpen(false);
+                        setViewMode("dashboard");
+                      }}
+                      title="Switch to full Mission Dashboard"
+                    >
+                      VIEW IN DASHBOARD
+                    </button>
+                    <button
+                      className="btn-modal-close"
+                      onClick={() => setIsForecastModalOpen(false)}
+                      title="Close 48H Forecast Modal"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+                <div className="forecast-modal-body">
+                  <RouteForecastPanel
+                    forecastData={forecast48h}
+                    onRefresh={fetchForecast48h}
+                    isLoading={isForecastLoading}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Pre-Departure Voyage Bundle Downloader Modal */}
+          <VoyageBundleScreen
+            isOpen={isVoyageBundleOpen}
+            onClose={() => setIsVoyageBundleOpen(false)}
+            routePoints={activeRoute?.points || []}
+            existingFetchFunctions={{
+              sea_ice: async () => {
+                const r = await fetch(`${BACKEND}/sea-ice`);
+                return r.ok ? r.json() : null;
+              },
+              iceberg_tracks: async () => {
+                const r = await fetch(`${BACKEND}/icebergs`);
+                return r.ok ? r.json() : null;
+              },
+              bathymetry: async () => ({ status: "cached_gebco_polar_depths" }),
+              weather_wind: async () => {
+                const r = await fetch(`${BACKEND}/weather/forecast/48h?latitude=-62.83&longitude=-60.50&speed_knots=12.4`);
+                return r.ok ? r.json() : null;
+              },
+            }}
+          />
+
+          {/* STEP 1: Always-Present Forecast Freshness Timestamp Overlay */}
+          <div className="forecast-freshness-overlay-slot">
+            <ForecastFreshnessBadge
+              lastUpdatedTimestamp={
+                nearbyIcebergs?.find((b) => b.last_updated)?.last_updated ||
+                forecast48h?.generated_utc ||
+                "2026-09-14T00:00:00Z"
+              }
+              dataLayerName="SEA ICE & ICEBERG RADAR"
+              onPrepareBundleClick={() => setIsVoyageBundleOpen(true)}
+            />
+          </div>
+
+          {/* Discreet Floating Camera Preset Switcher (Top Center, below topbar) */}
+          <div className="map-camera-bar">
+            <button
+              className={`cam-btn ${activePreset === "ship" ? "active" : ""}`}
+              onClick={() => applyCameraPreset("ship")}
+              title="Cinematic 3D Focus on MV Vasiliy Golovnin"
+              id="btn-cam-ship"
+            >
+              FOCUS VESSEL
+            </button>
+            <button
+              className={`cam-btn ${activePreset === "antarctica" ? "active" : ""}`}
+              onClick={() => applyCameraPreset("antarctica")}
+              title="Antarctic Polar Overview"
+              id="btn-cam-polar"
+            >
+              POLAR SECTOR
+            </button>
+            <button
+              className={`cam-btn ${activePreset === "icebergs" ? "active" : ""}`}
+              onClick={() => applyCameraPreset("icebergs")}
+              title="Tactical View of Iceberg Hazard Zones"
+              id="btn-cam-icebergs"
+            >
+              ICEBERGS &amp; HAZARDS
+            </button>
+            <button
+              className={`cam-btn ${activePreset === "earth" ? "active" : ""}`}
+              onClick={() => applyCameraPreset("earth")}
+              title="Global Earth Orbit"
+              id="btn-cam-earth"
+            >
+              EARTH ORBIT
+            </button>
+          </div>
+
+          {/* Minimal Quick Navigation Toolbar on Right Edge */}
+          <div className="map-nav-tools">
+            <button className="tool-btn" onClick={handleZoomIn} title="Zoom In (+)">
+              +
+            </button>
+            <button className="tool-btn" onClick={handleZoomOut} title="Zoom Out (-)">
+              -
+            </button>
+            <button className="tool-btn" onClick={handleTiltToggle} title="Toggle 3D Elevation Tilt">
+              3D
+            </button>
+            <button className="tool-btn" onClick={() => applyCameraPreset("ship")} title="Center on Vessel">
+              CTR
+            </button>
+          </div>
+
+          {/* Subtle Rotate Hint Badge */}
+          {showHintBadge && (
+            <div className="rotate-hint-badge" onClick={() => setShowHintBadge(false)}>
+              <span className="hand-icon-anim">⟲</span>
+              <div className="hint-text">
+                <strong>DRAG TO ROTATE</strong>
+                <span>3D ELEVATION VIEW</span>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

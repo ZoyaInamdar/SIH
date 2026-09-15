@@ -1,0 +1,318 @@
+/* ==========================================================================
+   VOYAGE BUNDLE SCREEN — PRE-DEPARTURE OFFLINE PREPARATION MODAL (BRASS & CHARCOAL)
+   ========================================================================== */
+
+.voyage-bundle-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(10, 13, 12, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 2200;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  animation: bundleFadeIn 0.2s ease-out;
+}
+
+@keyframes bundleFadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.voyage-bundle-modal {
+  background: #121614;
+  border: 1px solid #232823;
+  border-radius: 4px;
+  width: 100%;
+  max-width: 680px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.9);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #D8D8CE;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.bundle-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #121614;
+  border-bottom: 1px solid #232823;
+}
+
+.bundle-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bundle-icon {
+  font-size: 1.6rem;
+}
+
+.bundle-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #D8D8CE;
+  letter-spacing: 0.05em;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+}
+
+.bundle-subtitle {
+  font-size: 0.72rem;
+  color: #7A7D72;
+}
+
+.bundle-close-btn {
+  background: #121614;
+  border: 1px solid #232823;
+  color: #D8D8CE;
+  font-size: 1.1rem;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bundle-close-btn:hover {
+  background: #C64B3F;
+  border-color: #C64B3F;
+  color: #ffffff;
+}
+
+.bundle-content {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bundle-intro-card {
+  background: rgba(184, 148, 74, 0.08);
+  border: 1px solid #B8944A;
+  border-radius: 4px;
+  padding: 12px 14px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #D8D8CE;
+}
+
+.bundle-intro-card strong {
+  color: #B8944A;
+}
+
+.bundle-config-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.config-item label {
+  display: block;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #7A7D72;
+  margin-bottom: 6px;
+  letter-spacing: 0.04em;
+}
+
+.config-val {
+  background: #121614;
+  border: 1px solid #232823;
+  padding: 8px 12px;
+  border-radius: 3px;
+  font-size: 0.82rem;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  color: #D8D8CE;
+}
+
+.horizon-selector {
+  display: flex;
+  gap: 8px;
+}
+
+.horizon-btn {
+  flex: 1;
+  background: #121614;
+  border: 1px solid #232823;
+  color: #7A7D72;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.horizon-btn:hover {
+  border-color: #B8944A;
+  color: #D8D8CE;
+}
+
+.horizon-btn.active {
+  background: rgba(184, 148, 74, 0.16);
+  border-color: #B8944A;
+  color: #B8944A;
+}
+
+.tiers-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.76rem;
+  color: #7A7D72;
+}
+
+.tiers-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #D8D8CE;
+}
+
+/* Progress bar */
+.bundle-progress-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.72rem;
+}
+
+.status-txt {
+  color: #B8944A;
+}
+
+.percent-txt {
+  font-weight: 800;
+  color: #D8D8CE;
+}
+
+.bundle-progress-track {
+  height: 8px;
+  background: #232823;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bundle-progress-fill {
+  height: 100%;
+  background: #B8944A;
+  transition: width 0.25s ease;
+}
+
+/* Manifest Card */
+.bundle-manifest-card {
+  background: #121614;
+  border: 1px solid #232823;
+  border-radius: 3px;
+  padding: 12px 14px;
+}
+
+.manifest-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.status-badge.ready {
+  background: rgba(91, 155, 111, 0.16);
+  border: 1px solid #5B9B6F;
+  color: #5B9B6F;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 2px;
+}
+
+.manifest-id {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.65rem;
+  color: #7A7D72;
+}
+
+.manifest-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.72rem;
+  color: #7A7D72;
+}
+
+.manifest-details strong {
+  color: #D8D8CE;
+}
+
+/* Footer */
+.bundle-footer {
+  padding: 14px 20px;
+  background: #121614;
+  border-top: 1px solid #232823;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btn-cancel-bundle {
+  background: #121614;
+  border: 1px solid #232823;
+  color: #7A7D72;
+  padding: 8px 16px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.btn-cancel-bundle:hover {
+  background: #23252A;
+  color: #D8D8CE;
+}
+
+.btn-download-bundle {
+  background: #B8944A;
+  border: 1px solid #B8944A;
+  color: #0A0D0C;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.8rem;
+  font-weight: 800;
+  padding: 8px 18px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-download-bundle:hover:not(:disabled) {
+  background: #c9a456;
+}
+
+.btn-download-bundle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

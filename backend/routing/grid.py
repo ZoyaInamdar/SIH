@@ -110,7 +110,8 @@ def create_ocean_grid(
     hazards: Optional[List[dict]] = None,
     wave_data: Optional[List[dict]] = None,
     bathymetry_data: Optional[List[dict]] = None,
-    land_mask_data: Optional[List[dict]] = None
+    land_mask_data: Optional[List[dict]] = None,
+    risk_states: Optional[List[Any]] = None,
 ) -> List[List[dict]]:
 
     if resolution <= 0:
@@ -121,6 +122,7 @@ def create_ocean_grid(
     wave_data = wave_data or []
     bathymetry_data = bathymetry_data or []
     land_mask_data = land_mask_data or []
+    risk_states = risk_states or []
 
     latitudes = []
     current_lat = min_lat
@@ -153,8 +155,41 @@ def create_ocean_grid(
                 "sea_ice": 0.0,
                 "wave_height": 0.0,
                 "water_depth": 1000.0 if not is_land else 0.0,
-                "land": is_land
+                "land": is_land,
+                "risk_state": None,
             }
+
+            # If unified RiskState is provided, bind it as single source of truth
+            if risk_states:
+                nearest_rs = None
+                min_rs_dist = float("inf")
+                for rs in risk_states:
+                    rs_lat = getattr(rs, "latitude", rs.get("latitude", 0) if isinstance(rs, dict) else 0)
+                    rs_lon = getattr(rs, "longitude", rs.get("longitude", 0) if isinstance(rs, dict) else 0)
+                    d2 = (rs_lat - lat) ** 2 + (rs_lon - lon) ** 2
+                    if d2 < min_rs_dist:
+                        min_rs_dist = d2
+                        nearest_rs = rs
+                
+                # Match if within ~resolution distance
+                if nearest_rs is not None and min_rs_dist <= (resolution * 1.5) ** 2:
+                    cell["risk_state"] = nearest_rs
+                    cell["sea_ice"] = float(getattr(nearest_rs, "sic", nearest_rs.get("sic", 0.0) if isinstance(nearest_rs, dict) else 0.0))
+                    is_nav = bool(getattr(nearest_rs, "navigable", nearest_rs.get("navigable", True) if isinstance(nearest_rs, dict) else True))
+                    op_risk = str(getattr(nearest_rs, "operational_risk", nearest_rs.get("operational_risk", "") if isinstance(nearest_rs, dict) else ""))
+                    if not is_nav or op_risk in ("EXTREME", "BLOCKED"):
+                        cell["blocked"] = True
+
+            # Hard no-go barrier: Block any ocean cell falling inside an iceberg hazard zone
+            if hazards and not cell["blocked"]:
+                for hz in hazards:
+                    hz_r = float(hz.get("radius_m", 0))
+                    hz_lat = float(hz.get("latitude", 0))
+                    hz_lon = float(hz.get("longitude", 0))
+                    d_km2 = ((lat - hz_lat) * 111.12) ** 2 + ((lon - hz_lon) * 52.0) ** 2
+                    if d_km2 <= (hz_r / 1000.0) ** 2:
+                        cell["blocked"] = True
+                        break
 
             nearest_ice = find_nearest_data_point(
                 lat,

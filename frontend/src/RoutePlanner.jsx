@@ -243,14 +243,14 @@ function RoutePlanner({
       {/* Widget Header */}
       <div className="planner-header" onClick={() => setIsOpen(!isOpen)}>
         <div className="planner-header-left">
-          <span className="route-icon">🗺️</span>
+          <span className="route-tag-icon">[NAV]</span>
           <div>
             <div className="planner-title">FUEL-EFFICIENT ROUTE PLANNER</div>
             <div className="planner-subtitle">A* Environmental Ice Avoidance Engine</div>
           </div>
         </div>
         <button className="planner-toggle-btn">
-          {isOpen ? "▲ Hide" : "▼ Plan Route"}
+          {isOpen ? "▲ HIDE" : "▼ PLAN ROUTE"}
         </button>
       </div>
 
@@ -283,7 +283,7 @@ function RoutePlanner({
                   onClick={handleUseVesselStart}
                   title="Auto-fill current vessel position"
                 >
-                  📍 Use Vessel
+                  [SYNC VESSEL]
                 </button>
               </div>
               <div className="input-row">
@@ -342,7 +342,7 @@ function RoutePlanner({
 
           {errorMessage && (
             <div className="planner-error">
-              ⚠ {errorMessage}
+              [ERROR] {errorMessage}
             </div>
           )}
 
@@ -352,7 +352,7 @@ function RoutePlanner({
             onClick={handleCalculateRoute}
             disabled={isCalculating}
           >
-            {isCalculating ? "⚡ COMPUTING OPTIMAL A* PATH..." : "⚡ CALCULATE FUEL-EFFICIENT ROUTE"}
+            {isCalculating ? "[ COMPUTING OPTIMAL A* PATH... ]" : "[ CALCULATE FUEL-EFFICIENT ROUTE ]"}
           </button>
 
           {/* Route Comparison Results Card */}
@@ -361,13 +361,13 @@ function RoutePlanner({
               <div className="result-header">
                 <span className="result-title">ROUTE ANALYSIS COMPLETED</span>
                 <span className="fuel-saved-badge">
-                  🔥 {routeResult.fuel_saved_percent}% FUEL SAVED
+                  +{routeResult.fuel_saved_percent}% FUEL SAVED
                 </span>
               </div>
 
               <div className="metric-comparison">
                 <div className="metric-col green">
-                  <span className="m-type">🟢 FUEL-EFFICIENT</span>
+                  <span className="m-type">[OPTIMAL] FUEL-EFFICIENT</span>
                   <div className="m-val">{routeResult.fuel_efficient_route.distance_km} km</div>
                   <div className="m-sub">
                     Est. Fuel: {routeResult.fuel_efficient_route.estimated_fuel_cost} L
@@ -376,7 +376,7 @@ function RoutePlanner({
                 </div>
 
                 <div className="metric-col blue">
-                  <span className="m-type">🔵 DIRECT (SHORTEST)</span>
+                  <span className="m-type">[DIRECT] SHORTEST</span>
                   <div className="m-val">{routeResult.standard_route.distance_km} km</div>
                   <div className="m-sub">
                     Est. Fuel: {routeResult.standard_route.estimated_fuel_cost} L
@@ -386,7 +386,7 @@ function RoutePlanner({
               </div>
 
               <div className="route-summary-text">
-                💡 {routeResult.summary}
+                {routeResult.summary}
               </div>
 
               {/* 1-Click Voyage Action */}
@@ -400,14 +400,14 @@ function RoutePlanner({
                       }
                     }}
                   >
-                    🚢 START VOYAGE (SAIL ROUTE IN 3D)
+                    [ EXECUTE VOYAGE (3D SIMULATION) ]
                   </button>
                 ) : (
                   <div className="voyage-active-pill">
                     <span className="live-dot pulse"></span>
                     <span>VOYAGE IN PROGRESS</span>
                     <button className="small-pause-btn" onClick={onPauseVoyage}>
-                      ⏸ Pause Voyage
+                      [ PAUSE ]
                     </button>
                   </div>
                 )}

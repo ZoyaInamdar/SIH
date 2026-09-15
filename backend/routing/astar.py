@@ -44,8 +44,23 @@ class AStarRouter:
     def is_blocked(self, point: GridPoint) -> bool:
         if not self.valid_point(point): return True
         cell = self.grid[point[0]][point[1]]
-        if cell.get("blocked", False) or cell.get("land", False): return True
-        if point_inside_hazard(cell["latitude"], cell["longitude"], self.hazards): return True
+        lat = cell["latitude"]
+        lon = cell["longitude"]
+
+        # 1. Hard No-Go Constraint: Iceberg hazard standoff zones must NEVER be entered
+        if point_inside_hazard(lat, lon, self.hazards):
+            return True
+
+        # 2. Hard No-Go Constraint: Continental land & shallow grounding
+        if cell.get("blocked", False) or cell.get("land", False):
+            return True
+
+        # 3. Primary Interception: Read directly from unified RiskState
+        rs = cell.get("risk_state")
+        if rs is not None:
+            if not getattr(rs, "navigable", True) or getattr(rs, "operational_risk", "") in ("EXTREME", "BLOCKED"):
+                return True
+
         return False
 
     def neighbors(self, point: GridPoint) -> List[GridPoint]:
@@ -72,6 +87,13 @@ class AStarRouter:
         )
         if self.ignore_environmental_penalties:
             return distance_km
+            
+        # Primary Interception: Query precomputed RiskState
+        rs = next_cell.get("risk_state")
+        if rs is not None:
+            penalty = getattr(rs, "speed_penalty_factor", 0.0)
+            return distance_km + penalty
+
         return movement_cost(
             distance_km=distance_km,
             sea_ice_concentration=next_cell.get("sea_ice", 0.0),

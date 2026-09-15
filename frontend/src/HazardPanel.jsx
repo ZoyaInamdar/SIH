@@ -49,10 +49,10 @@ function HazardPanel({
           <span className="pill-val">{validHeading.toFixed(0)}°</span>
           {activeAlertIceberg && (
             <span className="alert-badge-red" style={{ marginLeft: 4 }}>
-              🚨 NEARBY ALERT
+              [ALARM: CPA PROX]
             </span>
           )}
-          <span className="pill-expand">▼ Open</span>
+          <span className="pill-expand">▼ OPEN</span>
         </div>
       </div>
     );
@@ -78,7 +78,7 @@ function HazardPanel({
           }}
           title="Minimize Panel"
         >
-          ▲ Minimize
+          ▲ HIDE
         </button>
       </div>
 
@@ -124,7 +124,7 @@ function HazardPanel({
       {activeAlertIceberg && alertETA && (
         <div className="two-day-alert-card pulse-danger">
           <div className="alert-card-header">
-            <span className="alert-badge-red">🚨 WARNING: ICEBERG NEARBY AHEAD</span>
+            <span className="alert-badge-red">[ALARM] CPA PROXIMITY HAZARD</span>
             <span className="alert-eta-chip">
               ETA: {alertETA.formattedETA || `${Math.round(alertETA.hours * 60)} min`}
             </span>
@@ -158,11 +158,11 @@ function HazardPanel({
               <div className="deter-val">
                 {isDeterring ? (
                   <span className="text-warning font-bold">
-                    ⚡ VEERING +{deterOffsetKm.toFixed(1)} KM {deterDirection} TO DETOUR AROUND {deterTarget || activeAlertIceberg.id}
+                    ACTIVE DETERRENCE: VECTOR +{deterOffsetKm.toFixed(1)} KM {deterDirection} CLEARING {deterTarget || activeAlertIceberg.id}
                   </span>
                 ) : (
                   <span className="text-cyan">
-                    🛡️ ARMED: AUTOMATIC AVOIDANCE READY UPON INTERCEPT PROXIMITY
+                    ARMED: AUTONAV AVOIDANCE VECTOR STANDBY
                   </span>
                 )}
               </div>
@@ -171,9 +171,9 @@ function HazardPanel({
         </div>
       )}
 
-      {inWarningArea && !activeAlertIceberg && typeof routeStatus === "string" && routeStatus.startsWith("⚠️") && (
+      {inWarningArea && !activeAlertIceberg && typeof routeStatus === "string" && (
         <div className="alert-banner">
-          ⚠ WARNING: {routeStatus}
+          [ALERT] {routeStatus.replace(/[⚠️⚠]/g, "").trim()}
         </div>
       )}
 

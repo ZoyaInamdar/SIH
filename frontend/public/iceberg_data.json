@@ -6,9 +6,9 @@
     "timestamp": "2026-09-08T01:30:00Z",
     "length_m": 3800.0,
     "width_m": 2400.0,
-    "freeboard_m": 42.0,
+    "freeboard_m": 45.0,
     "shape_class": "tabular",
-    "estimated_draft_m": 315.0,
+    "estimated_draft_m": 440.0,
     "draft_uncertainty_m": 15.0,
     "confidence": 0.94,
     "source": "satellite"

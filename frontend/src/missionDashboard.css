@@ -1,0 +1,1219 @@
+/* ==========================================================================
+   MISSION DASHBOARD — MARITIME CONSOLE STYLING (BRASS & CHARCOAL PALETTE)
+   ========================================================================== */
+
+:root {
+  --nav-bg-darkest: #0A0D0C;
+  --nav-bg-panel: rgba(18, 22, 20, 0.85);
+  --nav-bg-surface: #121614;
+  --nav-bg-surface-elevated: #1c221e;
+  --nav-border-dark: #232823;
+  --nav-border-bright: #303830;
+  --nav-accent-brass: #B8944A;
+  --nav-accent-brass-dim: rgba(184, 148, 74, 0.16);
+  --nav-accent-cyan: #B8944A; /* Alias fallback */
+  --nav-accent-cyan-dim: rgba(184, 148, 74, 0.16);
+  --nav-text-primary: #D8D8CE;
+  --nav-text-secondary: #7A7D72;
+  --nav-text-muted: #7A7D72;
+  --nav-status-ok: #5B9B6F;
+  --nav-status-warn: #C9A227;
+  --nav-status-danger: #C4392E;
+  --font-mono: 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+.mission-dashboard-container {
+  width: 100vw;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background-color: var(--nav-bg-darkest);
+  color: var(--nav-text-primary);
+  font-family: var(--font-sans);
+  padding: 12px 18px 40px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Custom technical scrollbar */
+.mission-dashboard-container::-webkit-scrollbar {
+  width: 6px;
+}
+.mission-dashboard-container::-webkit-scrollbar-track {
+  background: var(--nav-bg-darkest);
+}
+.mission-dashboard-container::-webkit-scrollbar-thumb {
+  background: var(--nav-border-bright);
+  border-radius: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   1. TOP METADATA & TELEMETRY STRIP
+   -------------------------------------------------------------------------- */
+.md-top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: var(--nav-bg-panel);
+  border: 1px solid var(--nav-border-dark);
+  border-radius: 2px;
+}
+
+.md-vessel-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.md-classification-tag {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  background: var(--nav-accent-brass-dim);
+  color: var(--nav-accent-brass);
+  border: 1px solid var(--nav-accent-brass);
+  border-radius: 2px;
+}
+
+.md-vessel-name {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--nav-text-primary);
+}
+
+.md-callsign {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--nav-text-secondary);
+}
+
+.md-top-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.md-chronometer {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--nav-text-primary);
+  background: #121614;
+  padding: 5px 12px;
+  border: 1px solid var(--nav-border-dark);
+  border-radius: 2px;
+  letter-spacing: 0.05em;
+}
+
+.md-chronometer .tz {
+  font-size: 0.68rem;
+  color: var(--nav-text-muted);
+}
+
+.md-action-btn {
+  background: #22252A;
+  color: var(--nav-text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--nav-border-dark);
+  padding: 6px 14px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.md-action-btn:hover {
+  background: var(--nav-accent-brass);
+  color: #0A0D0C;
+  border-color: var(--nav-accent-brass);
+}
+
+.md-action-btn.secondary {
+  border-color: var(--nav-border-dark);
+  color: var(--nav-text-secondary);
+}
+
+.md-action-btn.secondary:hover {
+  border-color: var(--nav-accent-brass);
+  color: var(--nav-text-primary);
+  background: #23252A;
+}
+
+/* --------------------------------------------------------------------------
+   2. PRIMARY INSTRUMENTATION HUD STRIP
+   -------------------------------------------------------------------------- */
+.md-instrument-strip {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 1200px) {
+  .md-instrument-strip {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .md-instrument-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.md-gauge-box {
+  background: var(--nav-bg-panel);
+  border: 1px solid var(--nav-border-dark);
+  padding: 8px 12px;
+  border-radius: 2px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 64px;
+}
+
+.md-gauge-box.risk-nominal {
+  border-left: 3px solid var(--nav-status-ok);
+}
+
+.md-gauge-box.risk-critical {
+  border-left: 3px solid var(--nav-status-danger);
+  background: rgba(198, 75, 63, 0.12);
+}
+
+.md-gauge-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--nav-text-muted);
+}
+
+.md-gauge-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.md-num {
+  font-family: var(--font-mono);
+  font-size: 1.22rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--nav-text-primary);
+}
+
+.md-gauge-readout .unit {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--nav-text-secondary);
+}
+
+.md-gauge-sub {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  color: var(--nav-text-secondary);
+  margin-top: 2px;
+}
+
+.md-gauge-sub.alert-flash {
+  color: var(--nav-status-danger);
+  font-weight: 700;
+}
+
+/* --------------------------------------------------------------------------
+   3. CRITICAL ALARM BANNER
+   -------------------------------------------------------------------------- */
+.md-alarm-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(198, 75, 63, 0.14);
+  border: 1px solid var(--nav-status-danger);
+  border-left: 4px solid var(--nav-status-danger);
+  padding: 10px 16px;
+  border-radius: 2px;
+}
+
+.md-alarm-code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--nav-status-danger);
+  letter-spacing: 0.08em;
+}
+
+.md-alarm-text {
+  font-size: 0.86rem;
+  color: #f1bfb8;
+  font-weight: 500;
+}
+
+.md-alarm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.md-alarm-btn {
+  background: var(--nav-status-danger);
+  color: #ffffff;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+/* --------------------------------------------------------------------------
+   4. FUEL EFFICIENT FAIRWAY ROUTE DASHBOARD (PROMINENT SECTION)
+   -------------------------------------------------------------------------- */
+.md-route-fairway-section {
+  background: var(--nav-bg-panel);
+  border: 1px solid var(--nav-border-dark);
+  border-radius: 2px;
+  padding: 14px 18px;
+}
+
+.md-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--nav-border-dark);
+}
+
+.md-section-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.md-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 2px;
+  background: var(--nav-accent-brass-dim);
+  color: var(--nav-accent-brass);
+}
+
+.md-badge.eco-badge {
+  background: rgba(91, 155, 111, 0.16);
+  color: var(--nav-status-ok);
+  border: 1px solid var(--nav-status-ok);
+}
+
+.md-section-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--nav-text-primary);
+  margin: 0;
+}
+
+.md-section-subtitle {
+  font-size: 0.75rem;
+  color: var(--nav-text-secondary);
+  margin-top: 2px;
+}
+
+/* Comparison Route Cards Grid */
+.md-route-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 900px) {
+  .md-route-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.md-route-card {
+  background: #121614;
+  border: 1px solid var(--nav-border-dark);
+  border-radius: 2px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: all 0.15s ease-in-out;
+}
+
+.md-route-card.recommended {
+  border-color: var(--nav-accent-brass);
+  background: rgba(184, 148, 74, 0.06);
+}
+
+.md-route-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.md-route-name {
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--nav-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.md-savings-pill {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--nav-status-ok);
+  background: rgba(91, 155, 111, 0.16);
+  padding: 2px 8px;
+  border-radius: 2px;
+}
+
+.md-metrics-table {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.md-metric-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.md-metric-cell .label {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--nav-text-muted);
+}
+
+.md-metric-cell .val {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--nav-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.md-metric-cell .val.green {
+  color: var(--nav-status-ok);
+}
+
+.md-metric-cell .val.brass {
+  color: var(--nav-accent-brass);
+}
+
+/* Waypoints / Danger Corridors Table */
+.md-table-wrap {
+  background: #121614;
+  border: 1px solid var(--nav-border-dark);
+  border-radius: 2px;
+  overflow-x: auto;
+  margin-top: 10px;
+}
+
+.md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.md-table th {
+  text-align: left;
+  padding: 6px 10px;
+  background: #121614;
+  color: var(--nav-text-muted);
+  border-bottom: 1px solid var(--nav-border-dark);
+  font-weight: 700;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+}
+
+.md-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--nav-border-dark);
+  color: var(--nav-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.md-table tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--nav-text-primary);
+}
+
+/* --------------------------------------------------------------------------
+   5. TWO-COLUMN LAYOUT: ICE HAZARDS & ENVIRONMENTAL SENSORS
+   -------------------------------------------------------------------------- */
+.md-two-col-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 960px) {
+  .md-two-col-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.md-card {
+  background: var(--nav-bg-panel);
+  border: 1px solid var(--nav-border-dark);
+  border-radius: 2px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.md-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--nav-border-dark);
+}
+
+.md-card-title {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--nav-text-primary);
+  letter-spacing: 0.04em;
+}
+
+.md-hazard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.md-hazard-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #121614;
+  border: 1px solid var(--nav-border-dark);
+  padding: 6px 10px;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.md-hazard-row.danger {
+  border-left: 3px solid var(--nav-status-danger);
+}
+
+.md-hazard-row.caution {
+  border-left: 3px solid var(--nav-status-warn);
+}
+
+.md-hazard-id {
+  font-weight: 700;
+  color: var(--nav-text-primary);
+}
+
+.md-hazard-meta {
+  color: var(--nav-text-secondary);
+}
+
+.md-hazard-dist {
+  font-weight: 700;
+  color: var(--nav-status-danger);
+}
+
+/* --------------------------------------------------------------------------
+   6. DOCKED BOTTOM PERSISTENT FUEL FAIRWAY STRIP (FOR MAP VIEW)
+   -------------------------------------------------------------------------- */
+.persistent-fairway-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: rgba(23, 25, 28, 0.92);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--nav-border-dark);
+  box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.5);
+  padding: 8px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-family: var(--font-mono);
+}
+
+.pfb-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pfb-tag {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #0A0D0C;
+  background: var(--nav-accent-brass);
+  padding: 2px 7px;
+  border-radius: 2px;
+  letter-spacing: 0.05em;
+}
+
+.pfb-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--nav-text-primary);
+  letter-spacing: 0.04em;
+}
+
+.pfb-metrics {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.pfb-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.pfb-stat .label {
+  font-size: 0.65rem;
+  color: var(--nav-text-muted);
+  text-transform: uppercase;
+}
+
+.pfb-stat .val {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--nav-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pfb-stat .val.green {
+  color: var(--nav-status-ok);
+}
+
+.pfb-stat .val.cyan,
+.pfb-stat .val.brass {
+  color: var(--nav-accent-brass);
+}
+
+.pfb-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pfb-btn {
+  background: #121614;
+  border: 1px solid var(--nav-border-dark);
+  color: var(--nav-text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pfb-btn:hover {
+  background: #23252A;
+  color: var(--nav-accent-brass);
+  border-color: var(--nav-accent-brass);
+}
+
+.pfb-btn.primary {
+  background: rgba(91, 155, 111, 0.16);
+  border-color: var(--nav-status-ok);
+  color: var(--nav-status-ok);
+}
+
+.pfb-btn.primary:hover {
+  background: var(--nav-status-ok);
+  color: #0A0D0C;
+}
+
+/* --------------------------------------------------------------------------
+   7. VIEW SWITCHER TOGGLE BAR (TOP CENTER)
+   -------------------------------------------------------------------------- */
+.view-mode-toggle-bar {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1100;
+  display: flex;
+  background: rgba(23, 25, 28, 0.85);
+  border: 1px solid var(--nav-border-dark);
+  border-radius: 3px;
+  padding: 3px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.view-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--nav-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 6px 14px;
+  border-radius: 2px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease-in-out;
+}
+
+.view-toggle-btn:hover {
+  color: var(--nav-text-primary);
+}
+
+.view-toggle-btn.active {
+  background: var(--nav-accent-brass);
+  color: #0A0D0C;
+  font-weight: 800;
+}
+
+/* --------------------------------------------------------------------------
+   8. UNIFIED MISSION DASHBOARD GRID & PANELS
+   -------------------------------------------------------------------------- */
+.mission-dashboard {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background-color: var(--nav-bg-darkest);
+  color: var(--nav-text-primary);
+  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  padding: 56px 20px 40px;
+  box-sizing: border-box;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.dashboard-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: #121614;
+  border: 1px solid var(--nav-border-dark);
+  border-radius: 3px;
+}
+
+.topbar-left .vessel-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vessel-indicator-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--nav-status-ok);
+  box-shadow: 0 0 8px var(--nav-status-ok);
+}
+
+.vessel-callsign {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--nav-text-primary);
+}
+
+.vessel-meta {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  color: var(--nav-text-secondary);
+}
+
+.topbar-center {
+  display: flex;
+  gap: 12px;
+}
+
+.telemetry-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #121614;
+  border: 1px solid var(--nav-border-dark);
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
+}
+
+.pill-tag {
+  color: var(--nav-text-muted);
+}
+
+.pill-data.cyan,
+.pill-data.brass { color: var(--nav-accent-brass); }
+.pill-data.green { color: var(--nav-status-ok); }
+.pill-data.amber { color: var(--nav-status-warn); }
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chronometer-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-family: var(--font-mono, monospace);
+}
+
+.chrono-tag {
+  font-size: 0.6rem;
+  color: var(--nav-text-muted);
+}
+
+.chrono-val {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--nav-text-primary);
+}
+
+.action-btn.return-map-btn {
+  background: #121614;
+  color: var(--nav-text-primary);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid var(--nav-border-dark);
+  padding: 6px 14px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.action-btn.return-map-btn:hover {
+  background: var(--nav-accent-brass);
+  color: #0A0D0C;
+  border-color: var(--nav-accent-brass);
+}
+
+.dashboard-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.instrument-strip {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 1200px) {
+  .instrument-strip {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.inst-cell {
+  background: #121614;
+  border: 1px solid var(--nav-border-dark);
+  padding: 10px 14px;
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.inst-cell.alert-highlight {
+  border-left: 3px solid var(--nav-status-ok);
+}
+
+.inst-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: var(--nav-text-muted);
+  letter-spacing: 0.05em;
+}
+
+.inst-value {
+  font-size: 1.18rem;
+  font-weight: 700;
+  color: var(--nav-text-primary);
+  margin: 4px 0;
+}
+
+.inst-value.mono {
+  font-family: var(--font-mono, monospace);
+}
+
+.inst-value.cyan,
+.inst-value.brass { color: var(--nav-accent-brass); }
+.inst-value.green { color: var(--nav-status-ok); }
+.inst-value.amber { color: var(--nav-status-warn); }
+.inst-value.red { color: var(--nav-status-danger); }
+
+.inst-sub {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.62rem;
+  color: var(--nav-text-secondary);
+}
+
+.dashboard-columns {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+@media (max-width: 1100px) {
+  .dashboard-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dash-panel {
+  background: #121614;
+  border: 1px solid var(--nav-border-dark);
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-title-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--nav-border-dark);
+  background: #121614;
+}
+
+.panel-title-text {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--nav-text-primary);
+}
+
+.panel-badge {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.64rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 2px;
+  background: var(--nav-accent-brass-dim);
+  color: var(--nav-accent-brass);
+  border: 1px solid var(--nav-accent-brass);
+}
+
+.panel-badge.highlight {
+  background: rgba(91, 155, 111, 0.16);
+  color: var(--nav-status-ok);
+  border-color: var(--nav-status-ok);
+}
+
+.panel-inner {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.route-kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.route-kpi-card {
+  background: #121614;
+  border: 1px solid var(--nav-border-dark);
+  padding: 10px;
+  border-radius: 3px;
+}
+
+.route-kpi-card.eco {
+  border-color: var(--nav-status-ok);
+  background: rgba(91, 155, 111, 0.06);
+}
+
+.kpi-header {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.62rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.kpi-type { color: var(--nav-text-secondary); }
+
+.kpi-save-badge {
+  color: var(--nav-status-ok);
+  font-weight: 800;
+}
+
+.kpi-penalty-badge {
+  color: var(--nav-status-warn);
+}
+
+.kpi-main-val {
+  font-family: var(--font-mono, monospace);
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--nav-text-primary);
+  margin-bottom: 8px;
+}
+
+.kpi-detail-row {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
+  color: var(--nav-text-secondary);
+  margin-bottom: 4px;
+}
+
+.kpi-detail-row strong {
+  color: var(--nav-text-primary);
+}
+
+.kpi-detail-row strong.green { color: var(--nav-status-ok); }
+.kpi-detail-row strong.amber { color: var(--nav-status-warn); }
+
+.table-container {
+  background: #121614;
+  border: 1px solid var(--nav-border-dark);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.table-header-title {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 6px 10px;
+  background: #121614;
+  color: var(--nav-text-secondary);
+  border-bottom: 1px solid var(--nav-border-dark);
+}
+
+.tech-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+}
+
+.tech-table th {
+  text-align: left;
+  padding: 6px 8px;
+  background: #121614;
+  color: var(--nav-text-muted);
+  font-weight: 700;
+  border-bottom: 1px solid var(--nav-border-dark);
+}
+
+.tech-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--nav-border-dark);
+  color: var(--nav-text-primary);
+}
+
+.tech-table tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.mono { font-family: var(--font-mono, monospace); }
+.mono.cyan, .mono.brass { color: var(--nav-accent-brass); }
+.mono.green { color: var(--nav-status-ok); }
+.mono.amber { color: var(--nav-status-warn); }
+
+.status-pill {
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.status-pill.safe {
+  background: rgba(91, 155, 111, 0.16);
+  color: var(--nav-status-ok);
+}
+
+.status-pill.restricted {
+  background: rgba(198, 75, 63, 0.16);
+  color: var(--nav-status-danger);
+}
+
+.status-pill.tracked {
+  background: var(--nav-accent-brass-dim);
+  color: var(--nav-accent-brass);
+}
+
+.source-tag {
+  font-size: 0.6rem;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.source-tag.sonar {
+  background: rgba(91, 155, 111, 0.16);
+  color: var(--nav-status-ok);
+  border: 1px solid var(--nav-status-ok);
+}
+
+.source-tag.sat {
+  background: var(--nav-accent-brass-dim);
+  color: var(--nav-accent-brass);
+}
+
+.spec-card {
+  background: #121614;
+  border: 1px solid var(--nav-border-dark);
+  border-radius: 3px;
+  padding: 10px;
+}
+
+.spec-title {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--nav-text-secondary);
+  margin-bottom: 8px;
+}
+
+.spec-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
+  color: var(--nav-text-secondary);
+}
+
+.spec-grid strong {
+  color: var(--nav-text-primary);
+}
+
+.wmo-zone-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.wmo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.66rem;
+  padding: 4px 6px;
+  border-radius: 2px;
+  background: #121614;
+}
+
+.wmo-color-chip {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.wmo-color-chip.safe { background: var(--nav-status-ok); }
+.wmo-color-chip.caution { background: var(--nav-status-warn); }
+.wmo-color-chip.restricted { background: var(--nav-status-danger); }
+.wmo-color-chip.avoid { background: #b03529; }
+
+.wmo-name {
+  flex: 1;
+  color: var(--nav-text-primary);
+}
+
+.alert-box {
+  padding: 8px 12px;
+  border-radius: 3px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+}
+
+.alert-box.nominal {
+  background: rgba(91, 155, 111, 0.08);
+  border: 1px solid rgba(91, 155, 111, 0.3);
+}
+
+.alert-box.critical {
+  background: rgba(198, 75, 63, 0.14);
+  border: 1px solid var(--nav-status-danger);
+  border-left: 4px solid var(--nav-status-danger);
+}
+
+.alert-head {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.alert-code { color: var(--nav-status-danger); }
+.alert-eta { color: var(--nav-text-primary); }
+.alert-body { color: #f1bfb8; font-size: 0.68rem; }
+
+.action-btn.start-fairway-btn {
+  width: 100%;
+  background: var(--nav-accent-brass);
+  color: #0A0D0C;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.action-btn.start-fairway-btn:hover {
+  background: #c9a456;
+}

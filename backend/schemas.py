@@ -305,3 +305,68 @@ class SonarObservation:
             "observed_at": self.observed_at,
         }
 
+
+# ============================================================
+# UNIFIED RISK STATE (INTERCEPTION LAYER)
+# ============================================================
+
+class RiskState(BaseModel):
+    """
+    Single unified risk representation for a specific geographic node/cell.
+    Converges:
+      1. Sea-ice forecast model (persistence + trend, WMO zone)
+      2. Iceberg drift & draft model (including sonar feedback loop)
+      3. Vessel & routing capability model (POLARIS RIO, FSICR, A* cost)
+    All consumers (NMEA, 2D Map, 3D Globe, Route Planner) strictly read this object.
+    """
+    node_id: str
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    timestamp: str
+
+    # --- Sea-Ice Model Outputs (Model 1) ---
+    sic: float = Field(default=0.0, ge=0.0, le=1.0, description="Sea-ice concentration 0.0 to 1.0")
+    sit_m: Optional[float] = Field(default=None, description="Sea-ice thickness in meters")
+    ice_type: Optional[str] = None
+    ice_trend_slope: Optional[float] = None
+    wmo_zone: str = "SAFE"
+    sea_ice_risk: str = "SAFE"
+    sea_ice_confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+
+    # --- Iceberg Drift & Draft Model Outputs (Model 2 - with Sonar Feedback) ---
+    iceberg_presence: bool = False
+    nearest_iceberg_id: Optional[str] = None
+    iceberg_distance_km: Optional[float] = None
+    estimated_draft_m: Optional[float] = None
+    iceberg_confidence: Optional[float] = None
+    iceberg_risk: str = "NONE"
+    iceberg_forecast_time: Optional[str] = None
+
+    # --- Vessel & Routing Model Outputs (Model 3 - POLARIS, FSICR, A*) ---
+    vessel_class: str = "PC4"
+    polaris_rio: Optional[float] = None
+    polaris_riv: Optional[float] = None
+    fsicr_channel_resistance_kn: Optional[float] = None
+    navigable: bool = True
+    speed_penalty_factor: float = Field(default=0.0, ge=0.0)
+
+    # --- Unified Converged Risk ---
+    operational_risk: str = Field(default="SAFE", description="Converged operational risk: SAFE, CAUTION, RESTRICTED, EXTREME, BLOCKED")
+    risk_score: float = Field(default=0.0, ge=0.0, le=100.0, description="Unified risk score 0.0 to 100.0")
+    primary_risk_source: str = "OPEN_WATER"
+    overall_confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+    data_freshness: str = "FRESH"
+
+    def to_dict(self) -> dict:
+        return self.model_dump()
+
+    def to_geojson_feature(self) -> dict:
+        return {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [self.longitude, self.latitude]
+            },
+            "properties": self.model_dump()
+        }
+
